@@ -1,5 +1,5 @@
 {
-  "name": "okCorral",
+  "name": "ok-corral",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -7,9 +7,11 @@
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "tsx server/index.ts"
   },
   "dependencies": {
+    "tsx": "^4.6.0",
     "clsx": "^2.1.1",
     "express": "^4.18.2",
     "lucide-react": "^0.563.0",
@@ -32,7 +34,6 @@
     "concurrently": "^8.2.2",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.3.5",
-    "tsx": "^4.6.0",
     "typescript": "^5.2.2",
     "vite": "^5.0.0"
   }
