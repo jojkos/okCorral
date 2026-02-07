@@ -3,15 +3,33 @@ import type { GameState, Player, Barrel, Bullet } from '../../shared/types';
 import { socket } from '../socket';
 import { playTickStart, playTickResolve } from '../sound';
 import { cn } from '../client/lib/utils';
-import { Shield, Skull, Star } from 'lucide-react';
+import { Shield, Skull, Star, Zap, CircleDot } from 'lucide-react';
 
 interface ArenaProps {
   gameState: GameState;
 }
 
+interface Projectile {
+  id: string;
+  startX: string;
+  startY: string;
+  endX: string;
+  endY: string;
+  team: 'sheriffs' | 'outlaws';
+}
+
+interface Impact {
+  id: string;
+  x: string;
+  y: string;
+  type: 'wood' | 'flesh';
+}
+
 export default function Arena({ gameState }: ArenaProps) {
   const [timeLeft, setTimeLeft] = useState(0);
-  const [activeBullets, setActiveBullets] = useState<Bullet[]>([]);
+  const [projectiles, setProjectiles] = useState<Projectile[]>([]);
+  const [impacts, setImpacts] = useState<Impact[]>([]);
+  const [muzzleFlashes, setMuzzleFlashes] = useState<{id: string, x: string, y: string}[]>([]);
 
   const { config, players, barrels, tick, phase, tickStartTime } = gameState;
 
@@ -32,8 +50,72 @@ export default function Arena({ gameState }: ArenaProps) {
 
   useEffect(() => {
     const handleTickEnd = ({ bullets }: { bullets: Bullet[] }) => {
-      setActiveBullets(bullets);
-      setTimeout(() => setActiveBullets([]), 800);
+      
+      const newProjectiles: Projectile[] = [];
+      const newMuzzles: {id: string, x: string, y: string}[] = [];
+      const newImpacts: Impact[] = [];
+
+      bullets.forEach(b => {
+         const isSheriff = b.fromTeam === 'sheriffs';
+         const slotPercent = 100 / config.slotsPerSide;
+         const rowCenter = b.fromSlot * slotPercent + slotPercent / 2;
+         
+         // Start Coordinates
+         // Sheriffs at 35% (Right of Left Col), Outlaws at 65% (Left of Right Col)
+         // Adjusting slightly to align with gun/barrel position
+         const startX = isSheriff ? '25%' : '75%'; 
+         const startY = `${rowCenter}%`;
+
+         // End Coordinates
+         // If hit, ends at target column (65% for Sheriffs shooting right, 35% for Outlaws shooting left)
+         const targetX = isSheriff ? '75%' : '25%';
+         let targetYVal = b.fromSlot; // default straight
+
+         if (b.trajectory === 'up') targetYVal -= 1;
+         if (b.trajectory === 'down') targetYVal += 1;
+         
+         const targetY = `${(targetYVal * slotPercent) + (slotPercent / 2)}%`;
+
+         // 1. Muzzle Flash (Immediate)
+         newMuzzles.push({
+            id: `muzzle-${b.id}`,
+            x: startX,
+            y: startY
+         });
+
+         // 2. Projectile (Fly across)
+         newProjectiles.push({
+            id: `proj-${b.id}`,
+            startX,
+            startY,
+            endX: targetX,
+            endY: targetY,
+            team: b.fromTeam
+         });
+
+         // 3. Impact (Delayed by travel time ~400ms)
+         // Only if it actually hit something (player or barrel)
+         // For now, let's show impacts on the target line regardless? 
+         // 'hit' property in Bullet usually means "did damage to player".
+         // Use generic impact if !hit (hit barrel/missed but blocked), focused impact if hit.
+         
+         setTimeout(() => {
+            setImpacts(prev => [...prev, {
+                id: `imp-${b.id}`,
+                x: targetX,
+                y: targetY,
+                type: b.hit ? 'flesh' : 'wood' // Simplification: hit=true means player damage. hit=false means blocked (wood) or miss.
+            }]);
+         }, 400); // Sync with CSS animation duration
+      });
+
+      setMuzzleFlashes(newMuzzles);
+      setProjectiles(newProjectiles);
+
+      // Cleanup
+      setTimeout(() => setMuzzleFlashes([]), 200);
+      setTimeout(() => setProjectiles([]), 450); // Clear just after anim finishes
+      setTimeout(() => setImpacts([]), 1000); // clear impacts later
     };
 
     socket.on('tickEnd', handleTickEnd);
@@ -44,7 +126,7 @@ export default function Arena({ gameState }: ArenaProps) {
       socket.off('tickStart', playTickStart);
       socket.off('tickEnd', playTickResolve);
     };
-  }, []);
+  }, [config.slotsPerSide]);
 
   const sheriffs = players.filter(p => p.team === 'sheriffs' && p.slot >= 0);
   const outlaws = players.filter(p => p.team === 'outlaws' && p.slot >= 0);
@@ -153,12 +235,76 @@ export default function Arena({ gameState }: ArenaProps) {
              })}
           </div>
           
-           {/* Bullet animations overlay */}
-           <div className="absolute inset-0 pointer-events-none">
-             {activeBullets.map((bullet) => (
-               <BulletAnimation key={bullet.id} bullet={bullet} config={config} />
+           {/* ---------------- EFFECTS LAYER ---------------- */}
+           <div className="absolute inset-0 pointer-events-none z-50">
+             
+             {/* 1. Muzzle Flashes */}
+             {muzzleFlashes.map(mf => (
+               <div 
+                 key={mf.id} 
+                 className="absolute w-24 h-24 -translate-x-1/2 -translate-y-1/2"
+                 style={{ left: mf.x, top: mf.y }}
+               >
+                 {/* Flash Burst - No Icon */}
+                 <div className="absolute inset-0 bg-yellow-400 rounded-full opacity-50 blur-xl animate-pulse" />
+                 <div className="absolute inset-[20%] bg-white rounded-full opacity-80 blur-md animate-ping" />
+               </div>
              ))}
+
+             {/* 2. Projectiles */}
+             {projectiles.map(p => (
+               <div
+                 key={p.id}
+                 className="absolute w-4 h-4 z-40 animate-bullet-travel"
+                 style={{
+                   '--fx-start-x': p.startX,
+                   '--fx-start-y': p.startY,
+                   '--fx-end-x': p.endX,
+                   '--fx-end-y': p.endY,
+                 } as React.CSSProperties}
+               >
+                 {/* Bullet Head */}
+                 <div className="w-3 h-3 bg-white rounded-full shadow-[0_0_10px_#fff,0_0_20px_#fbbf24] relative z-10" />
+                 
+                 {/* Trail */}
+                 <div className={cn(
+                     "absolute top-1/2 -translate-y-1/2 h-1 w-24 blur-[1px]",
+                     p.team === 'sheriffs' 
+                       ? "right-0 bg-gradient-to-l from-white via-blue-400 to-transparent" 
+                       : "left-0 bg-gradient-to-r from-white via-red-400 to-transparent"
+                 )} />
+               </div>
+             ))}
+
+             {/* 3. Impacts */}
+             {impacts.map(imp => (
+               <div
+                  key={imp.id}
+                  className="absolute -translate-x-1/2 -translate-y-1/2 z-50"
+                  style={{ left: imp.x, top: imp.y }}
+               >
+                 {imp.type === 'flesh' ? (
+                   // Blood/Flesh Hit
+                   <div className="relative">
+                      <div className="w-20 h-20 bg-red-600 rounded-full blur-2xl animate-ping opacity-60" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Skull className="w-12 h-12 text-white animate-bounce" />
+                      </div>
+                      <span className="absolute -top-10 left-1/2 -translate-x-1/2 text-red-500 font-black text-2xl animate-float">-1 HP</span>
+                   </div>
+                 ) : (
+                   // Wood/Barrel Hit
+                   <div className="relative">
+                      <div className="w-12 h-12 bg-amber-700/60 rounded-full blur-md animate-ping" />
+                      <CircleDot className="w-8 h-8 text-amber-200 animate-spin" />
+                      <div className="absolute -inset-4 border-2 border-amber-500/50 rounded-full animate-ping" style={{ animationDuration: '0.3s' }} />
+                   </div>
+                 )}
+               </div>
+             ))}
+
            </div>
+           {/* ---------------- END EFFECTS ---------------- */}
 
         </div>
       </div>
@@ -267,7 +413,6 @@ function SlotItem({ player, barrel, team, flipped }: SlotItemProps) {
                 "bg-[#5D4037] border-[#3E2723]",
                 barrel.hp < 3 && "bg-[#4E342E]",
                 barrel.hp < 2 && "bg-[#3E2723]",
-                // Hit animation class would go here if we tracked hit state per barrel
              )}>
                 {/* Visual details */}
                 <div className="absolute inset-x-0 top-1/4 h-px bg-black/30 w-full" />
@@ -304,52 +449,3 @@ function SlotItem({ player, barrel, team, flipped }: SlotItemProps) {
     </div>
   );
 }
-
-interface BulletAnimationProps {
-  bullet: Bullet;
-  config: { slotsPerSide: number };
-}
-
-function BulletAnimation({ bullet, config }: BulletAnimationProps) {
-   const slotPercent = 100 / config.slotsPerSide;
-   const rowCenter = bullet.fromSlot * slotPercent + slotPercent / 2;
-   
-   const isFromSheriff = bullet.fromTeam === 'sheriffs';
-   
-   // Layout: [Sheriffs 0..45%] [Gap] [Outlaws 55..100%]
-   // Bullets start from the BARREL position (inner edge).
-   // Sheriff Barrel is at roughly 40-45%. Outlaw Barrel is at 55-60%.
-   
-   const startX = isFromSheriff ? '42%' : '58%'; 
-   const endX = isFromSheriff ? '58%' : '42%';
-   
-   let toTop = rowCenter;
-   if (bullet.trajectory === 'up') toTop = Math.max(0, rowCenter - slotPercent);
-   if (bullet.trajectory === 'down') toTop = Math.min(100, rowCenter + slotPercent);
- 
-   return (
-     <div
-       className="absolute w-12 h-2 rounded-full z-50 pointer-events-none"
-       style={{
-         left: startX,
-         top: `${rowCenter}%`,
-         transform: 'translate(-50%, -50%)',
-         background: 'linear-gradient(90deg, #fbbf24, #f59e0b)',
-         boxShadow: '0 0 20px rgba(251, 191, 36, 1)',
-         animation: `bulletFly 0.5s cubic-bezier(0.2, 0, 0.2, 1) forwards`,
-         '--end-x': endX,
-         '--end-y': `${toTop}%`,
-       } as React.CSSProperties}
-     >
-       {/* Trail effect */}
-       <div className="absolute right-0 top-1/2 -translate-y-1/2 w-24 h-1 bg-gradient-to-l from-yellow-500/0 via-yellow-400/50 to-transparent rounded-full blur-[2px]" />
-       
-       {bullet.hit && (
-         <div className="absolute right-0 top-1/2 opacity-0 animate-hit-flash">
-            <div className="w-24 h-24 bg-white rounded-full blur-xl opacity-80" />
-            <div className="w-12 h-12 bg-yellow-200 rounded-full blur-md" />
-         </div>
-       )}
-     </div>
-   );
- }

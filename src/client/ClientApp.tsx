@@ -115,17 +115,8 @@ export default function ClientApp() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!connected || player || autoJoinAttempted.current) return;
-    if (session?.roomCode && session.playerId && session.playerName) {
-      autoJoinAttempted.current = true;
-      socket.emit('joinRoom', {
-        roomCode: session.roomCode,
-        playerName: session.playerName,
-        playerId: session.playerId,
-      });
-    }
-  }, [connected, player, session]);
+  // Removed auto-join effect to prevent getting stuck in old sessions.
+  // The JoinScreen will pre-fill with session data, allowing the user to confirm or change code.
 
   const leaveSession = () => {
     sessionStorage.removeItem(CLIENT_SESSION_KEY);

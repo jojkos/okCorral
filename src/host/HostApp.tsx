@@ -90,6 +90,17 @@ export default function HostApp() {
     });
 
     socket.on('error', (message) => {
+      console.error('Socket error:', message);
+      // If the room is not found (e.g. server restart), reset session and create a new room
+      if (message.includes('Room not found') || message.includes('Invalid room')) {
+        console.log('Room not found, resetting session and creating new room...');
+        sessionStorage.removeItem(HOST_SESSION_KEY);
+        setSession(null);
+        setRoomCode(null);
+        const hostId = hostIdRef.current || getOrCreateHostId();
+        socket.emit('createRoom', { config: DEFAULT_CONFIG, hostId });
+        return;
+      }
       setError(message);
       setTimeout(() => setError(null), 3000);
     });
