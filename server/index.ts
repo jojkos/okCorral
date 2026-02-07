@@ -20,10 +20,31 @@ const httpServer = createServer(app);
 // Serve static files from the dist directory
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distPath = path.join(__dirname, "../dist");
-app.use(express.static(distPath));
+
+console.log("--- DEBUG: Static File Serving ---");
+console.log("__dirname:", __dirname);
+console.log("Resolved distPath:", distPath);
+
+if (fs.existsSync(distPath)) {
+  console.log("dist directory exists. Contents:", fs.readdirSync(distPath));
+} else {
+  console.error("CRITICAL: dist directory does NOT exist at:", distPath);
+}
+
+app.use(
+  express.static(distPath, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".js")) {
+        res.setHeader("Content-Type", "application/javascript");
+      }
+    },
+  }),
+);
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: {
