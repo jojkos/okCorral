@@ -17,6 +17,14 @@ import type {
 const app = express();
 const httpServer = createServer(app);
 
+// Serve static files from the dist directory
+import path from "path";
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.join(__dirname, "../dist");
+app.use(express.static(distPath));
+
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: {
     origin: true, // allow any origin so LAN clients (e.g. http://192.168.x.x:5173) can connect
@@ -192,8 +200,15 @@ io.on("connection", (socket) => {
   });
 });
 
+// Serve index.html for all other routes (SPA)
+app.get("*", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
+});
+
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = "0.0.0.0"; // listen on all interfaces so LAN clients can connect
 httpServer.listen(PORT, HOST, () => {
-  console.log(`Server running on http://${HOST}:${PORT} (LAN: use your machine's IP)`);
+  console.log(
+    `Server running on http://${HOST}:${PORT} (LAN: use your machine's IP)`,
+  );
 });
