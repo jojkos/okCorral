@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { WesternButton } from '../components/WesternButton';
+import { Skull } from 'lucide-react';
 
 interface JoinScreenProps {
   initialCode: string;
@@ -30,68 +31,60 @@ export default function JoinScreen({ initialCode, initialName, error, onJoin }: 
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="w-full max-w-lg text-center">
-        <div className="mx-auto w-14 h-14 rounded-full border-2 border-amber-700 flex items-center justify-center text-2xl mb-4">
-          💀
-        </div>
-        <h1 className="text-4xl uppercase text-amber-700">Join Posse</h1>
-        <p className="text-neutral-500 mt-2">Enter the saloon code</p>
-
-        <div className="western-card mt-8 p-6 md:p-8 text-left">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="player-name" className="block text-sm font-bold mb-2 uppercase text-neutral-600">
-                Your Name
-              </label>
-              <input
-                id="player-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value.slice(0, 20))}
-                placeholder="Cowboy Joe"
-                className="w-full text-left text-lg py-3 px-4
-                  bg-amber-50 border-2 border-amber-800 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-amber-500"
-                autoFocus={!initialCode}
-              />
+    <div className="min-h-screen bg-background flex flex-col p-4">
+      <main className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full">
+         <div className="w-full animate-slide-in">
+          <div className="text-center mb-8">
+            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-primary">
+              <Skull className="w-10 h-10 text-primary" />
             </div>
+            <h1 className="text-4xl font-display text-primary">Join Game</h1>
+            <p className="text-muted-foreground mt-2">Enter the saloon code</p>
+          </div>
 
-            <div>
-              <label htmlFor="room-code" className="block text-sm font-bold mb-2 uppercase text-neutral-600">
-                Room Code
-              </label>
-              <input
-                id="room-code"
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 4))}
-                placeholder="B5HW"
-                className="w-full text-center text-3xl tracking-[0.5em] py-4
-                  bg-amber-50 border-2 border-amber-800 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-amber-500"
-                style={{ fontFamily: 'Space Mono, monospace' }}
-              />
-            </div>
-
-            {error && (
-              <div className="text-red-700 text-center py-2 px-4 bg-red-100 border-2 border-red-300 rounded-lg font-bold">
-                {error}
+          <div className="western-card p-6 md:p-8">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              
+              <div className="space-y-2">
+                <label htmlFor="name" className="text-lg font-display">Your Name</label>
+                <input 
+                  id="name"
+                  placeholder="Billy the Kid" 
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="flex h-10 w-full rounded-md border-input px-3 ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-lg py-6 bg-white/50 border-2 border-[#8B5E3C]/30 focus-visible:ring-primary font-mono"
+                />
               </div>
-            )}
 
-            <WesternButton
-              type="submit"
-              disabled={!canJoin}
-              variant="primary"
-              size="lg"
-              className="w-full"
-            >
-              Enter Saloon
-            </WesternButton>
-          </form>
+              <div className="space-y-2">
+                <label htmlFor="code" className="text-lg font-display">Room Code</label>
+                <input 
+                  id="code"
+                  placeholder="ABCD" 
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  maxLength={4}
+                  className="flex h-10 w-full rounded-md border-input px-3 ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-4xl text-center py-8 tracking-[0.5em] font-black uppercase bg-white/50 border-2 border-[#8B5E3C]/30 focus-visible:ring-primary font-mono placeholder:tracking-normal placeholder:text-2xl"
+                />
+              </div>
+
+              {error && (
+                <div className="text-destructive text-center py-2 px-4 bg-destructive/10 border-2 border-destructive/30 rounded-lg font-bold animate-shake">
+                  {error}
+                </div>
+              )}
+
+              <WesternButton 
+                type="submit" 
+                className="w-full text-xl py-6 mt-4"
+                disabled={!canJoin}
+              >
+                Enter Saloon
+              </WesternButton>
+            </form>
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
