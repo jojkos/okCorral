@@ -6,6 +6,9 @@
 app = 'okcorral'
 primary_region = 'iad'
 
+[env]
+  PORT = '8080'
+
 [build]
 
 [http_service]
