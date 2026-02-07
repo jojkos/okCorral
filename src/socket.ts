@@ -14,6 +14,7 @@ export const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
+    transports: ["websocket"], // Force WebSocket to avoid polling issues with proxies (e.g. Fly.io)
   },
 );
 
