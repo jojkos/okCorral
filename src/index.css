@@ -4,216 +4,141 @@
 @tailwind utilities;
 
 :root {
+  /* Western / Desert Theme Palette */
   --background: 35 30% 92%;      /* Parchment / Sand */
   --foreground: 20 14% 15%;      /* Dark Brown / Gunmetal */
+  
   --primary: 24 85% 45%;         /* Rust Orange */
   --primary-foreground: 35 30% 96%;
+  
   --secondary: 38 40% 80%;       /* Light Sand / Wood */
   --secondary-foreground: 20 14% 15%;
-  --accent: 190 70% 40%;         /* Turquoise / Denim Blue */
-  --destructive: 0 75% 45%;      /* Deep Red */
-  --border: 30 15% 75%;
   
-  /* Sheriff and Outlaw colors */
-  --sheriff: 220 80% 45%;        /* Blue */
-  --outlaw: 0 75% 50%;           /* Red */
-}
+  --muted: 35 20% 88%;
+  --muted-foreground: 25 10% 45%;
+  
+  --accent: 190 70% 40%;         /* Turquoise / Denim Blue (Contrast) */
+  --accent-foreground: 210 40% 98%;
+  
+  --destructive: 0 75% 45%;      /* Deep Red */
+  --destructive-foreground: 210 40% 98%;
+  
+  --border: 30 15% 75%;
+  --input: 30 15% 75%;
+  --ring: 24 85% 45%;
+  
+  --radius: 0.5rem;
 
-html, body, #root {
-  height: 100%;
-  margin: 0;
-  padding: 0;
+  /* Font Variables for Tailwind */
+  --font-sans: 'Outfit', sans-serif;
+  --font-serif: 'Rye', serif;
+  --font-mono: 'Space Mono', monospace;
 }
 
 @layer base {
   body {
-    @apply antialiased;
-    font-family: 'Outfit', sans-serif;
-    background-color: hsl(35, 30%, 92%);
-    color: hsl(20, 14%, 15%);
-    /* Parchment texture background */
+    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
+    font-family: var(--font-sans);
     background-image: 
       radial-gradient(circle at 50% 50%, rgba(160, 100, 50, 0.03) 0%, transparent 100%),
-      url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%238B5E3C' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%238B5E3C' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
   }
-  
-  h1, h2, h3 {
-    font-family: 'Rye', serif;
-    @apply tracking-wide;
-    color: hsl(20, 14%, 15%);
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    @apply tracking-wide text-foreground;
   }
 }
 
 @layer components {
   .western-card {
-    @apply rounded-lg;
-    background-color: #F4E9D6;
-    border: 2px solid #8B5E3C;
-    box-shadow: 4px 4px 0px 0px #8B5E3C;
+    @apply bg-[#F4E9D6] border-2 border-[#8B5E3C] shadow-[4px_4px_0px_0px_#8B5E3C] rounded-lg relative overflow-hidden;
   }
   
   .western-btn {
-    @apply uppercase transition-all duration-150 font-bold
-           rounded-lg select-none cursor-pointer;
-    border: 2px solid hsl(20, 14%, 15%);
-    box-shadow: 4px 4px 0px 0px rgba(0,0,0,1);
-    -webkit-tap-highlight-color: transparent;
-  }
-  
-  .western-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 6px 6px 0px 0px rgba(0,0,0,1);
-  }
-  
-  .western-btn:active {
-    transform: translateY(4px);
-    box-shadow: none;
+    @apply font-display tracking-widest uppercase transition-all duration-200
+           active:translate-y-1 active:shadow-none
+           border-2 border-foreground rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]
+           flex items-center justify-center select-none cursor-pointer;
   }
   
   .western-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: 4px 4px 0px 0px rgba(0,0,0,0.3);
-  }
-  
-  .western-btn-primary {
-    background-color: hsl(24, 85%, 45%);
-    color: hsl(35, 30%, 96%);
-  }
-  
-  .western-btn-secondary {
-    background-color: hsl(38, 40%, 80%);
-    color: hsl(20, 14%, 15%);
-  }
-  
-  .western-btn-danger {
-    background-color: hsl(0, 75%, 45%);
-    color: white;
-  }
-  
-  .western-btn-sheriff {
-    background-color: hsl(220, 80%, 92%);
-    color: hsl(220, 80%, 30%);
-    border-color: hsl(220, 80%, 45%);
-    box-shadow: 4px 4px 0px 0px hsl(220, 80%, 35%);
-  }
-  
-  .western-btn-outlaw {
-    background-color: hsl(0, 75%, 92%);
-    color: hsl(0, 75%, 30%);
-    border-color: hsl(0, 75%, 50%);
-    box-shadow: 4px 4px 0px 0px hsl(0, 75%, 35%);
+    @apply opacity-50 cursor-not-allowed transform-none shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)];
   }
 
-  /* Control buttons for mobile */
-  .ctrl-btn {
-    @apply rounded-lg font-bold transition-all duration-100 select-none;
-    background-color: #F4E9D6;
-    border: 2px solid #8B5E3C;
-    box-shadow: 0 4px 0 #8B5E3C;
-    -webkit-tap-highlight-color: transparent;
-  }
-  
-  .ctrl-btn:active {
-    transform: translateY(4px);
-    box-shadow: none;
-  }
-  
-  .ctrl-btn.locked {
-    background-color: #d4edda;
-    border-color: #28a745;
-    box-shadow: 0 4px 0 #1e7e34;
-  }
-  
-  .ctrl-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+  .wood-texture {
+    background-color: #D4B483;
+    background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.02) 0px, rgba(0,0,0,0.02) 2px, transparent 2px, transparent 4px);
   }
 
-  /* Slot cards */
+  /* Specific okCorral components */
   .slot-card {
-    @apply rounded-lg p-4 transition-all duration-200;
-    background-color: #F4E9D6;
-    border: 2px solid #8B5E3C;
+    @apply western-card p-4 transition-all duration-200;
   }
   
   .slot-card.sheriff {
-    border-color: hsl(220, 80%, 45%);
-    border-top: 4px solid hsl(220, 80%, 45%);
+    background-color: #eff6ff;
+    border-color: #1e40af;
+    box-shadow: 4px 4px 0px 0px #1e40af;
   }
   
   .slot-card.outlaw {
-    border-color: hsl(0, 75%, 50%);
-    border-top: 4px solid hsl(0, 75%, 50%);
+    background-color: #fef2f2;
+    border-color: #b91c1c;
+    box-shadow: 4px 4px 0px 0px #b91c1c;
+  }
+
+  .ctrl-btn {
+    @apply western-btn bg-[#F4E9D6] text-xl p-0;
   }
   
-  .slot-card.empty {
-    background-color: rgba(244, 233, 214, 0.5);
-    border-style: dashed;
-    opacity: 0.6;
+  .ctrl-btn.locked {
+    @apply bg-green-100 border-green-700 text-green-800 shadow-[4px_4px_0px_0px_#15803d];
   }
 }
 
 /* Animations */
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px) rotate(-1deg); }
+  75% { transform: translateX(2px) rotate(1deg); }
 }
 
-@keyframes bounce {
+.animate-shake {
+  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
 }
 
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-3px); }
-  75% { transform: translateX(3px); }
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .animate-slide-in {
-  animation: slideIn 0.3s ease-out forwards;
+  animation: slideIn 0.4s ease-out forwards;
+}
+
+@keyframes bounceSubtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
 }
 
 .animate-bounce-subtle {
-  animation: bounce 0.5s ease-out;
+  animation: bounceSubtle 2s ease-in-out infinite;
 }
 
-.animate-shake {
-  animation: shake 0.3s ease-out;
-}
 
-@keyframes bulletFly {
-  0% {
-    opacity: 1;
-  }
-  100% {
-    left: var(--end-x);
-    top: var(--end-y);
-    opacity: 0.3;
-  }
-}
-
-/* HP and Ammo styles */
-.heart-full {
-  color: hsl(0, 75%, 50%);
-}
-
-.heart-empty {
-  color: #ccc;
-}
-
-.bullet-full {
-  color: hsl(45, 80%, 45%);
-}
-
-.bullet-empty {
-  color: #ccc;
+.bg-landing {
+  background-image: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('/bg-landing.png');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
 }
