@@ -88,6 +88,8 @@ export function resolveActions(state: GameState): ActionResult {
       player.isCovered = true;
     } else if (!player.currentAction.startsWith("MOVE")) {
       // Any action except COVER and MOVE removes cover
+      // This runs BEFORE shooting calculation, so if you select COVER,
+      // isCovered becomes true immediately for this round's defense.
       player.isCovered = false;
     }
   });

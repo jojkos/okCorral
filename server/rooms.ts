@@ -140,12 +140,36 @@ export class RoomManager {
     room.state.players.push(player);
     playerRooms.set(playerId, roomCode);
 
+    // Auto-assign to team
+    const sheriffsCount = room.state.players.filter(
+      (p) => p.team === "sheriffs",
+    ).length;
+    const outlawsCount = room.state.players.filter(
+      (p) => p.team === "outlaws",
+    ).length;
+
+    // Assign to smaller team, or sheriffs if equal
+    const assignedTeam: Team =
+      sheriffsCount <= outlawsCount ? "sheriffs" : "outlaws";
+
+    // Find slot
+    const slot = findAvailableSlot(
+      room.state.players,
+      assignedTeam,
+      room.state.config.slotsPerSide,
+    );
+
+    if (slot !== null) {
+      player.team = assignedTeam;
+      player.slot = slot;
+    }
+
     return {
       success: true,
       player: {
         id: player.id,
         name: player.name,
-        team: null, // Not assigned to team yet
+        team: player.team,
         slot: player.slot,
       },
     };
@@ -274,6 +298,32 @@ export class RoomManager {
     room.state.tick = 0;
     room.state.winner = null;
     room.state.lastTickBullets = [];
+
+    // Randomize player positions
+    const sheriffs = room.state.players.filter(
+      (p) => p.team === "sheriffs" && p.slot >= 0,
+    );
+    const outlaws = room.state.players.filter(
+      (p) => p.team === "outlaws" && p.slot >= 0,
+    );
+
+    // Fisher-Yates shuffle
+    const shuffle = (array: any[]) => {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    };
+
+    shuffle(sheriffs);
+    shuffle(outlaws);
+
+    // Re-assign slots 0,1,2... based on shuffled order
+    // This compacts them if there are gaps, but that's fine for a fresh start?
+    // Actually, we should probably just swap their existing valid slots to maintain count?
+    // Let's just re-assign 0..N to the shuffled players.
+    sheriffs.forEach((p, i) => (p.slot = i));
+    outlaws.forEach((p, i) => (p.slot = i));
 
     this.startPlanningPhase(roomCode);
     return { success: true };
