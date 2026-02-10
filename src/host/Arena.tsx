@@ -22,7 +22,7 @@ interface Impact {
   id: string;
   x: string;
   y: string;
-  type: 'wood' | 'flesh';
+  type: 'wood' | 'flesh' | 'spark' | 'none';
 }
 
 export default function Arena({ gameState }: ArenaProps) {
@@ -50,72 +50,86 @@ export default function Arena({ gameState }: ArenaProps) {
 
   useEffect(() => {
     const handleTickEnd = ({ bullets }: { bullets: Bullet[] }) => {
-      
-      const newProjectiles: Projectile[] = [];
-      const newMuzzles: {id: string, x: string, y: string}[] = [];
-      const newImpacts: Impact[] = [];
+      // Delay shooting animations to let CSS transition-based movement
+      // animations play first (SlotItem tokens have transition-all duration-500)
+      const SHOOT_DELAY = 600;
 
-      bullets.forEach(b => {
-         const isSheriff = b.fromTeam === 'sheriffs';
-         const slotPercent = 100 / config.slotsPerSide;
-         const rowCenter = b.fromSlot * slotPercent + slotPercent / 2;
-         
-         // Start Coordinates
-         // Sheriffs at 35% (Right of Left Col), Outlaws at 65% (Left of Right Col)
-         // Adjusting slightly to align with gun/barrel position
-         const startX = isSheriff ? '25%' : '75%'; 
-         const startY = `${rowCenter}%`;
+      // --- Shooting animations (after movement CSS transitions complete) ---
+      setTimeout(() => {
+        const newProjectiles: Projectile[] = [];
+        const newMuzzles: {id: string, x: string, y: string}[] = [];
 
-         // End Coordinates
-         // If hit, ends at target column (65% for Sheriffs shooting right, 35% for Outlaws shooting left)
-         const targetX = isSheriff ? '75%' : '25%';
-         let targetYVal = b.fromSlot; // default straight
+        bullets.forEach(b => {
+           const isSheriff = b.fromTeam === 'sheriffs';
+           const slotPercent = 100 / config.slotsPerSide;
+           const rowCenter = b.fromSlot * slotPercent + slotPercent / 2;
+           
+           const startX = isSheriff ? '25%' : '75%'; 
+           const startY = `${rowCenter}%`;
 
-         if (b.trajectory === 'up') targetYVal -= 1;
-         if (b.trajectory === 'down') targetYVal += 1;
-         
-         const targetY = `${(targetYVal * slotPercent) + (slotPercent / 2)}%`;
+           const targetX = isSheriff ? '75%' : '25%';
+           let targetYVal = b.fromSlot;
 
-         // 1. Muzzle Flash (Immediate)
-         newMuzzles.push({
-            id: `muzzle-${b.id}`,
-            x: startX,
-            y: startY
-         });
+           if (b.trajectory === 'up') targetYVal -= 1;
+           if (b.trajectory === 'down') targetYVal += 1;
+           
+           const targetY = `${(targetYVal * slotPercent) + (slotPercent / 2)}%`;
 
-         // 2. Projectile (Fly across)
-         newProjectiles.push({
-            id: `proj-${b.id}`,
-            startX,
-            startY,
-            endX: targetX,
-            endY: targetY,
-            team: b.fromTeam
-         });
+           // For bullet collisions, projectiles meet at the midpoint
+           let endX = targetX;
+           let endY = targetY;
+           if (b.hit === 'bullet') {
+             endX = '50%';
+             // Midpoint Y between shooter and target
+             const startYVal = b.fromSlot * slotPercent + slotPercent / 2;
+             const endYVal = targetYVal * slotPercent + slotPercent / 2;
+             endY = `${(startYVal + endYVal) / 2}%`;
+           }
 
-         // 3. Impact (Delayed by travel time ~400ms)
-         // Only if it actually hit something (player or barrel)
-         // For now, let's show impacts on the target line regardless? 
-         // 'hit' property in Bullet usually means "did damage to player".
-         // Use generic impact if !hit (hit barrel/missed but blocked), focused impact if hit.
-         
-         setTimeout(() => {
-            setImpacts(prev => [...prev, {
-                id: `imp-${b.id}`,
-                x: targetX,
-                y: targetY,
-                type: b.hit ? 'flesh' : 'wood' // Simplification: hit=true means player damage. hit=false means blocked (wood) or miss.
-            }]);
-         }, 400); // Sync with CSS animation duration
-      });
+           // 1. Muzzle Flash
+           newMuzzles.push({
+              id: `muzzle-${b.id}`,
+              x: startX,
+              y: startY
+           });
 
-      setMuzzleFlashes(newMuzzles);
-      setProjectiles(newProjectiles);
+           // 2. Projectile
+           newProjectiles.push({
+              id: `proj-${b.id}`,
+              startX,
+              startY,
+              endX,
+              endY,
+              team: b.fromTeam
+           });
 
-      // Cleanup
-      setTimeout(() => setMuzzleFlashes([]), 200);
-      setTimeout(() => setProjectiles([]), 450); // Clear just after anim finishes
-      setTimeout(() => setImpacts([]), 1000); // clear impacts later
+           // 3. Impact (delayed by bullet travel time)
+           setTimeout(() => {
+              const impactType: Impact['type'] = 
+                b.hit === 'player' ? 'flesh' :
+                b.hit === 'barrel' ? 'wood' :
+                b.hit === 'bullet' ? 'spark' :
+                'none'; // miss
+
+              if (impactType !== 'none') {
+                setImpacts(prev => [...prev, {
+                    id: `imp-${b.id}`,
+                    x: endX,
+                    y: endY,
+                    type: impactType,
+                }]);
+              }
+           }, 400);
+        });
+
+        setMuzzleFlashes(newMuzzles);
+        setProjectiles(newProjectiles);
+
+        // Cleanup shooting effects
+        setTimeout(() => setMuzzleFlashes([]), 200);
+        setTimeout(() => setProjectiles([]), 450);
+        setTimeout(() => setImpacts([]), 1000);
+      }, bullets.length > 0 ? SHOOT_DELAY : 0);
     };
 
     socket.on('tickEnd', handleTickEnd);
@@ -126,7 +140,7 @@ export default function Arena({ gameState }: ArenaProps) {
       socket.off('tickStart', playTickStart);
       socket.off('tickEnd', playTickResolve);
     };
-  }, [config.slotsPerSide]);
+  }, [config.slotsPerSide, players]);
 
   const sheriffs = players.filter(p => p.team === 'sheriffs' && p.slot >= 0);
   const outlaws = players.filter(p => p.team === 'outlaws' && p.slot >= 0);
@@ -276,32 +290,42 @@ export default function Arena({ gameState }: ArenaProps) {
                </div>
              ))}
 
-             {/* 3. Impacts */}
-             {impacts.map(imp => (
-               <div
-                  key={imp.id}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 z-50"
-                  style={{ left: imp.x, top: imp.y }}
-               >
-                 {imp.type === 'flesh' ? (
-                   // Blood/Flesh Hit
-                   <div className="relative">
-                      <div className="w-20 h-20 bg-red-600 rounded-full blur-2xl animate-ping opacity-60" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Skull className="w-12 h-12 text-white animate-bounce" />
-                      </div>
-                      <span className="absolute -top-10 left-1/2 -translate-x-1/2 text-red-500 font-black text-2xl animate-float">-1 HP</span>
-                   </div>
-                 ) : (
-                   // Wood/Barrel Hit
-                   <div className="relative">
-                      <div className="w-12 h-12 bg-amber-700/60 rounded-full blur-md animate-ping" />
-                      <CircleDot className="w-8 h-8 text-amber-200 animate-spin" />
-                      <div className="absolute -inset-4 border-2 border-amber-500/50 rounded-full animate-ping" style={{ animationDuration: '0.3s' }} />
-                   </div>
-                 )}
-               </div>
-             ))}
+              {/* 3. Impacts */}
+              {impacts.map(imp => (
+                <div
+                   key={imp.id}
+                   className="absolute -translate-x-1/2 -translate-y-1/2 z-50"
+                   style={{ left: imp.x, top: imp.y }}
+                >
+                  {imp.type === 'flesh' ? (
+                    // Blood/Flesh Hit
+                    <div className="relative">
+                       <div className="w-20 h-20 bg-red-600 rounded-full blur-2xl animate-ping opacity-60" />
+                       <div className="absolute inset-0 flex items-center justify-center">
+                         <Skull className="w-12 h-12 text-white animate-bounce" />
+                       </div>
+                       <span className="absolute -top-10 left-1/2 -translate-x-1/2 text-red-500 font-black text-2xl animate-float">-1 HP</span>
+                    </div>
+                  ) : imp.type === 'wood' ? (
+                    // Wood/Barrel Hit
+                    <div className="relative">
+                       <div className="w-12 h-12 bg-amber-700/60 rounded-full blur-md animate-ping" />
+                       <CircleDot className="w-8 h-8 text-amber-200 animate-spin" />
+                       <div className="absolute -inset-4 border-2 border-amber-500/50 rounded-full animate-ping" style={{ animationDuration: '0.3s' }} />
+                    </div>
+                  ) : imp.type === 'spark' ? (
+                    // Bullet-on-Bullet Collision
+                    <div className="relative animate-spark-burst">
+                       <div className="w-24 h-24 bg-yellow-400 rounded-full blur-2xl animate-ping opacity-70" />
+                       <div className="absolute inset-0 flex items-center justify-center">
+                         <Zap className="w-14 h-14 text-yellow-300 filter drop-shadow-[0_0_10px_rgba(250,204,21,0.8)] animate-spin" />
+                       </div>
+                       <div className="absolute -inset-6 border-2 border-yellow-400/60 rounded-full animate-ping" style={{ animationDuration: '0.2s' }} />
+                       <div className="absolute -inset-10 border border-white/30 rounded-full animate-ping" style={{ animationDuration: '0.4s' }} />
+                    </div>
+                  ) : null}
+                </div>
+              ))}
 
            </div>
            {/* ---------------- END EFFECTS ---------------- */}

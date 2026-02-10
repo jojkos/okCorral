@@ -400,10 +400,11 @@ export class RoomManager {
       this.io.to(roomCode).emit("gameEnded", { winner: "sheriffs" });
       this.broadcastState(roomCode);
     } else {
-      // Continue to next tick after a short delay for animations
+      // Continue to next tick after delay for animation sequence
+      // (600ms movement + 400ms bullet travel + impact display)
       setTimeout(() => {
         this.startPlanningPhase(roomCode);
-      }, 500);
+      }, 2000);
     }
   }
 
