@@ -220,7 +220,7 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
                     onClick={() => handleAction('SHOOT_UP')}
                     disabled={!!lockedAction || !isPlanning || ammo <= 0}
                  >
-                    ↗
+                    {isSheriff ? '↗' : '↖'}
                  </WesternButton>
                  <WesternButton
                     variant="danger"
@@ -228,7 +228,7 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
                     onClick={() => handleAction('SHOOT_STRAIGHT')}
                     disabled={!!lockedAction || !isPlanning || ammo <= 0}
                  >
-                    →
+                    {isSheriff ? '→' : '←'}
                  </WesternButton>
                  <WesternButton
                     variant="danger"
@@ -236,7 +236,7 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
                     onClick={() => handleAction('SHOOT_DOWN')}
                     disabled={!!lockedAction || !isPlanning || ammo <= 0}
                  >
-                    ↘
+                    {isSheriff ? '↘' : '↙'}
                  </WesternButton>
               </div>
            </div>
