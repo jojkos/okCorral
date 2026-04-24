@@ -289,9 +289,9 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
             <ActionBtn color="#e0b04a" icon="⟳" label="RELOAD" disabled={!!lockedAction || !isPlanning || ammo >= 3} onClick={() => handleAction('RELOAD')} active={lockedAction === 'RELOAD'} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <ActionBtn color="#b53a3a" icon={isSheriff ? '↗' : '↖'} label="SHOOT UP" disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_UP')} active={lockedAction === 'SHOOT_UP'} />
+            <ActionBtn color="#b53a3a" icon={isSheriff ? '↗' : '↖'} label="SHOOT UP" primary disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_UP')} active={lockedAction === 'SHOOT_UP'} />
             <ActionBtn color="#b53a3a" icon={isSheriff ? '→' : '←'} label="SHOOT" primary disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_STRAIGHT')} active={lockedAction === 'SHOOT_STRAIGHT'} />
-            <ActionBtn color="#b53a3a" icon={isSheriff ? '↘' : '↙'} label="SHOOT DOWN" disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_DOWN')} active={lockedAction === 'SHOOT_DOWN'} />
+            <ActionBtn color="#b53a3a" icon={isSheriff ? '↘' : '↙'} label="SHOOT DOWN" primary disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_DOWN')} active={lockedAction === 'SHOOT_DOWN'} />
           </div>
           <button
             onClick={onLeave}

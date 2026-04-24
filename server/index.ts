@@ -55,6 +55,23 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
 
 const roomManager = new RoomManager(io);
 
+// A socket may be a host (hostId), a joined player (playerId), or both.
+// Prefer the explicit room set on the socket, then fall back to the
+// player/host → room maps. Without this the host can't trigger
+// startGame/playAgain since hosts don't have a playerId.
+function socketRoom(socket: { data: { playerId?: string; hostId?: string; roomCode?: string } }): string | undefined {
+  if (socket.data.roomCode) return socket.data.roomCode;
+  if (socket.data.playerId) {
+    const r = roomManager.getPlayerRoom(socket.data.playerId);
+    if (r) return r;
+  }
+  if (socket.data.hostId) {
+    const r = roomManager.getPlayerRoom(socket.data.hostId);
+    if (r) return r;
+  }
+  return undefined;
+}
+
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
@@ -174,12 +191,7 @@ io.on("connection", (socket) => {
 
   // Either host or any joined player can start the game.
   socket.on("startGame", () => {
-    const playerId = socket.data.playerId as string | undefined;
-    const hostId = socket.data.hostId as string | undefined;
-    const roomCode =
-      (playerId && roomManager.getPlayerRoom(playerId)) ||
-      (hostId && roomManager.getPlayerRoom(hostId)) ||
-      (socket.data.roomCode as string | undefined);
+    const roomCode = socketRoom(socket);
     if (!roomCode) return;
     const result = roomManager.startGame(roomCode);
     if (!result.success) {
@@ -187,14 +199,11 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Play again
+  // Either host or any joined player can trigger play-again.
   socket.on("playAgain", () => {
-    const playerId = socket.data.playerId as string | undefined;
-    if (!playerId) return;
-    const roomCode = roomManager.getPlayerRoom(playerId);
-    if (roomCode) {
-      roomManager.resetToLobby(roomCode);
-    }
+    const roomCode = socketRoom(socket);
+    if (!roomCode) return;
+    roomManager.resetToLobby(roomCode);
   });
 
   // End session (host only — tears down the whole room + timers)
