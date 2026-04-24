@@ -268,34 +268,103 @@ export function playDefeat(): void {
 }
 
 export function playTickStart(): void {
-  // "Planning" chime — harmonica-like two-note fifth
+  // Round-start glint: quick arpeggio on a saloon-piano-ish triangle stack
+  // (D5 A5 F5) — warm, open fifth-ish shape with a sustaining bass root.
+  // Short enough to not outlast the timer bar starting to move.
   const c = ensureCtx();
   if (!c) return;
   const t = now();
-  tone({ type: 'triangle', freq: 523.25, dur: 0.18, gain: 0.22, attack: 0.008, release: 0.22, when: t, filter: { type: 'lowpass', freq: 3000 } });
-  tone({ type: 'triangle', freq: 783.99, dur: 0.25, gain: 0.18, attack: 0.008, release: 0.3, when: t + 0.06, filter: { type: 'lowpass', freq: 3200 } });
-  tone({ type: 'sine', freq: 261.63, dur: 0.35, gain: 0.15, attack: 0.02, release: 0.4, when: t });
+  const notes = [
+    { f: 587.33, at: 0.00, dur: 0.22, g: 0.17 }, // D5
+    { f: 880.00, at: 0.05, dur: 0.24, g: 0.15 }, // A5
+    { f: 698.46, at: 0.10, dur: 0.30, g: 0.14 }, // F5 — softer
+  ];
+  for (const n of notes) {
+    tone({
+      type: 'triangle',
+      freq: n.f,
+      dur: n.dur,
+      gain: n.g,
+      attack: 0.006,
+      release: n.dur + 0.12,
+      when: t + n.at,
+      filter: { type: 'lowpass', freq: 3200 },
+    });
+    // Octave-down pad for body
+    tone({
+      type: 'sine',
+      freq: n.f / 2,
+      dur: n.dur + 0.05,
+      gain: n.g * 0.45,
+      attack: 0.012,
+      release: n.dur + 0.22,
+      when: t + n.at,
+    });
+  }
+  // Slow bass root so the glint sits on a bed, not in the air
+  tone({ type: 'sine', freq: 146.83, dur: 0.5, gain: 0.14, attack: 0.03, release: 0.55, when: t });
 }
 
 export function playTickResolve(): void {
-  // "Shootout!" low bell hit
+  // "Shootout!" — low, cinematic rumble with a brass-ish swell. Two layered
+  // downward sweeps land together with a soft noise tail for space.
   const c = ensureCtx();
   if (!c) return;
   const t = now();
-  tone({ type: 'sine', freq: 180, freqEnd: 90, dur: 0.4, gain: 0.45, attack: 0.002, release: 0.55, when: t });
-  tone({ type: 'triangle', freq: 360, freqEnd: 180, dur: 0.35, gain: 0.25, attack: 0.003, release: 0.5, when: t, filter: { type: 'lowpass', freq: 1800 } });
-  // a little reverberant noise to give it space
-  const buf = noiseBuffer(0.25);
-  if (buf) playBuffer(buf, { gain: 0.15, filter: { type: 'bandpass', freq: 400, q: 0.6 }, attack: 0.005, release: 0.35, when: t });
+  // Low thud
+  tone({ type: 'sine', freq: 160, freqEnd: 55, dur: 0.55, gain: 0.5, attack: 0.003, release: 0.7, when: t });
+  // Brass-ish body (sawtooth through lowpass)
+  tone({
+    type: 'sawtooth',
+    freq: 220,
+    freqEnd: 110,
+    dur: 0.45,
+    gain: 0.22,
+    attack: 0.01,
+    release: 0.6,
+    filter: { type: 'lowpass', freq: 900, q: 0.8 },
+    when: t,
+  });
+  // Airy fifth above for size
+  tone({ type: 'triangle', freq: 330, freqEnd: 165, dur: 0.4, gain: 0.14, attack: 0.01, release: 0.55, when: t, filter: { type: 'lowpass', freq: 1600 } });
+  // Reverberant noise tail
+  const buf = noiseBuffer(0.35);
+  if (buf) playBuffer(buf, { gain: 0.17, filter: { type: 'bandpass', freq: 380, q: 0.5 }, attack: 0.02, release: 0.5, when: t });
 }
 
 export function playLockAction(): void {
-  // Dry click
-  tone({ type: 'square', freq: 1600, freqEnd: 900, dur: 0.04, gain: 0.15, attack: 0.001, release: 0.06, filter: { type: 'bandpass', freq: 1400, q: 2 } });
+  // Revolver-hammer cock: pitched metallic thunk + tiny noise transient.
+  // Two-stage — a soft tick leads a clicky pitched hit, like cocking a gun.
+  const c = ensureCtx();
+  if (!c) return;
+  const t = now();
+  // Preparatory tick (soft, high)
+  const tick = noiseBuffer(0.03);
+  if (tick) playBuffer(tick, { gain: 0.18, filter: { type: 'highpass', freq: 3000 }, attack: 0.001, release: 0.03, when: t });
+  // Main pitched "chunk"
+  tone({
+    type: 'triangle',
+    freq: 520,
+    freqEnd: 280,
+    dur: 0.08,
+    gain: 0.22,
+    attack: 0.002,
+    release: 0.12,
+    filter: { type: 'bandpass', freq: 700, q: 2.5 },
+    when: t + 0.04,
+  });
+  // Sub body to give it weight
+  tone({ type: 'sine', freq: 220, freqEnd: 140, dur: 0.08, gain: 0.22, attack: 0.002, release: 0.12, when: t + 0.04 });
+  // Mechanical transient
+  const transient = noiseBuffer(0.05);
+  if (transient) playBuffer(transient, { gain: 0.2, filter: { type: 'bandpass', freq: 1600, q: 1.8 }, attack: 0.001, release: 0.05, when: t + 0.04 });
 }
 
 export function playDenied(): void {
-  tone({ type: 'sawtooth', freq: 220, freqEnd: 140, dur: 0.18, gain: 0.18, attack: 0.002, release: 0.2, filter: { type: 'lowpass', freq: 900 } });
+  // Two-note descending disappointed minor
+  const t = now();
+  tone({ type: 'triangle', freq: 440, dur: 0.1, gain: 0.18, attack: 0.003, release: 0.14, filter: { type: 'lowpass', freq: 1600 }, when: t });
+  tone({ type: 'triangle', freq: 349.23, dur: 0.18, gain: 0.18, attack: 0.004, release: 0.24, filter: { type: 'lowpass', freq: 1400 }, when: t + 0.08 });
 }
 
 export function playJoin(): void {

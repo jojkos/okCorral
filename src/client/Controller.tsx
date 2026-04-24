@@ -4,10 +4,10 @@ import { socket } from '../socket';
 import { playTickStart, playTickResolve, playLockAction, playDeath, playDenied } from '../sound';
 import {
   WesternBackdrop,
-  MiniCowboy,
   WesternBtn,
   westernStyles as S,
 } from '../components/WesternUI';
+import CowboyPortrait from '../components/CowboyPortrait';
 
 interface ControllerProps {
   player: ClientPlayer;
@@ -117,7 +117,12 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
             textAlign: 'center',
           }}
         >
-          <MiniCowboy team={player.team ?? 'sheriffs'} size={120} />
+          <CowboyPortrait
+            team={player.team ?? 'sheriffs'}
+            size={180}
+            facing={player.team === 'outlaws' ? -1 : 1}
+            seed={(player.name || '').length}
+          />
           <div>
             <h1 style={{ ...S.title, fontSize: 36, margin: 0, color: teamColor }}>
               {isSheriff ? 'SHERIFF' : 'OUTLAW'}
@@ -229,7 +234,12 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
         {/* Portrait */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 16 }}>
           <div style={{ textAlign: 'center' }}>
-            <MiniCowboy team={player.team ?? 'sheriffs'} size={120} />
+            <CowboyPortrait
+            team={player.team ?? 'sheriffs'}
+            size={180}
+            facing={player.team === 'outlaws' ? -1 : 1}
+            seed={(player.name || '').length}
+          />
             <div style={{ ...S.serif, color: '#f4e9d6', fontSize: 22, letterSpacing: 2, marginTop: 6 }}>
               {player.name.toUpperCase()}
             </div>
