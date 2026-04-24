@@ -190,7 +190,15 @@ export default function ClientApp() {
 
   const myPlayer = gameState?.players.find(p => p.id === player.id);
   if (myPlayer && !myPlayer.isAlive) {
-    return <DeadScreen isEnded={false} winner={null} playerTeam={myPlayer.team} />;
+    return (
+      <DeadScreen
+        isEnded={false}
+        winner={null}
+        playerTeam={myPlayer.team}
+        playerName={player.name}
+        deathTick={gameState?.tick}
+      />
+    );
   }
 
   return (

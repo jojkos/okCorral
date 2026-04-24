@@ -1,8 +1,12 @@
 import type { ClientPlayer, GameState, Team, Player } from '../../shared/types';
 import { socket } from '../socket';
-import { WesternButton } from '../components/WesternButton';
-import { cn } from './lib/utils';
-import { Star, Skull } from 'lucide-react';
+import {
+  WesternBackdrop,
+  StarEmblem,
+  SkullEmblem,
+  WesternBtn,
+  westernStyles as S,
+} from '../components/WesternUI';
 
 interface TeamSelectProps {
   player: ClientPlayer;
@@ -14,174 +18,204 @@ interface TeamSelectProps {
 
 export default function TeamSelect({ player, gameState, error, onSelectTeam, onLeave }: TeamSelectProps) {
   const { config, players } = gameState;
-  
-  const sheriffs = players.filter(p => p.team === 'sheriffs' && p.slot >= 0);
-  const outlaws = players.filter(p => p.team === 'outlaws' && p.slot >= 0);
-  const unassigned = players.filter(p => p.slot < 0);
 
-  const sheriffsAvailable = config.slotsPerSide - sheriffs.length;
-  const outlawsAvailable = config.slotsPerSide - outlaws.length;
+  const sheriffs = players.filter((p) => p.team === 'sheriffs' && p.slot >= 0);
+  const outlaws = players.filter((p) => p.team === 'outlaws' && p.slot >= 0);
+  const unassigned = players.filter((p) => p.slot < 0);
 
   const canStartGame = sheriffs.length > 0 && outlaws.length > 0;
   const isSheriff = player.slot >= 0 && player.team === 'sheriffs';
   const isOutlaw = player.slot >= 0 && player.team === 'outlaws';
 
   return (
-    <div className="min-h-screen flex flex-col p-4 md:p-6 bg-background">
-      <div className="text-center mb-6 relative py-4">
-        <button
-          className="absolute right-0 top-0 text-xs uppercase font-bold text-muted-foreground hover:text-foreground"
-          onClick={onLeave}
-        >
-          Leave
-        </button>
-        <h1 className="text-3xl md:text-4xl uppercase text-primary font-display">Pick a Side</h1>
-        <p className="text-muted-foreground">
-          Welcome, <strong className="text-foreground">{player.name}</strong>!
-        </p>
-      </div>
-
-      {error && (
-        <div className="text-destructive text-center py-2 px-4 mb-4 bg-destructive/10 border-2 border-destructive/30 rounded-lg font-bold animate-shake">
-          {error}
-        </div>
-      )}
-
-      <div className="flex-1 grid grid-cols-1 gap-4">
-        <TeamPanel
-          title="Sheriffs"
-          icon={<Star className="w-8 h-8 md:w-10 md:h-10 fill-current" />}
-          team="sheriffs"
-          isSelected={isSheriff}
-          slotsPerSide={config.slotsPerSide}
-          players={sheriffs}
-          available={sheriffsAvailable}
-          onSelect={onSelectTeam}
-        />
-        <TeamPanel
-          title="Outlaws"
-          icon={<Skull className="w-8 h-8 md:w-10 md:h-10" />}
-          team="outlaws"
-          isSelected={isOutlaw}
-          slotsPerSide={config.slotsPerSide}
-          players={outlaws}
-          available={outlawsAvailable}
-          onSelect={onSelectTeam}
-        />
-      </div>
-
-      {unassigned.length > 0 && (
-        <div className="western-card p-3 mt-4 bg-muted/30">
-          <div className="text-xs uppercase text-muted-foreground font-bold mb-2">Undecided</div>
-          <div className="flex flex-wrap gap-2">
-            {unassigned.map(p => (
-              <span key={p.id} className="bg-secondary px-3 py-1 rounded-full text-sm font-semibold border border-border">
-                🤠 {p.name}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="mt-6 sticky bottom-4">
-        {canStartGame ? (
-          <WesternButton
-            variant="primary"
-            className="w-full py-6 text-xl shadow-xl bg-primary hover:bg-primary/90 text-primary-foreground"
-            onClick={() => socket.emit('startGame')}
+    <WesternBackdrop>
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 2,
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: 20,
+          gap: 14,
+        }}
+      >
+        <div style={{ textAlign: 'center', marginTop: 8, position: 'relative' }}>
+          <button
+            onClick={onLeave}
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              background: 'transparent',
+              border: 'none',
+              ...S.mono,
+              fontSize: 10,
+              letterSpacing: 2,
+              color: '#d9cbb0',
+              opacity: 0.6,
+              cursor: 'pointer',
+            }}
           >
-            🎮 Start Gunfight!
-          </WesternButton>
+            LEAVE
+          </button>
+          <div style={{ ...S.mono, fontSize: 10, letterSpacing: 3, color: '#e0b04a', fontWeight: 'bold' }}>★ PICK YER SIDE ★</div>
+          <h1 style={{ ...S.serif, color: '#f4e9d6', fontSize: 26, margin: '4px 0', letterSpacing: 1 }}>
+            Which'll it be, {player.name}?
+          </h1>
+        </div>
+
+        {error && (
+          <div
+            style={{
+              ...S.mono,
+              padding: '10px 14px',
+              background: 'rgba(181,58,58,0.15)',
+              border: '2px solid #b53a3a',
+              borderRadius: 4,
+              color: '#ff8080',
+              textAlign: 'center',
+              fontWeight: 'bold',
+            }}
+          >
+            ⚠ {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
+          <TeamPickCard
+            team="sheriffs"
+            players={sheriffs}
+            max={config.slotsPerSide}
+            selected={isSheriff}
+            disabled={isOutlaw}
+            onPick={() => onSelectTeam('sheriffs')}
+          />
+          <TeamPickCard
+            team="outlaws"
+            players={outlaws}
+            max={config.slotsPerSide}
+            selected={isOutlaw}
+            disabled={isSheriff}
+            onPick={() => onSelectTeam('outlaws')}
+          />
+        </div>
+
+        {unassigned.length > 0 && (
+          <div style={{ ...S.mono, fontSize: 10, color: '#d9cbb0', opacity: 0.6, textAlign: 'center', letterSpacing: 2 }}>
+            UNDECIDED: {unassigned.map((p) => p.name).join(' · ')}
+          </div>
+        )}
+
+        {canStartGame && !isSheriff && !isOutlaw ? null : canStartGame ? (
+          <WesternBtn primary big onClick={() => socket.emit('startGame')}>▶ START GUNFIGHT</WesternBtn>
         ) : (
-          <div className="text-center text-muted-foreground bg-background/80 backdrop-blur p-2 rounded-lg border border-border">
-            Waiting for players on both sides...
+          <div style={{ ...S.mono, fontSize: 11, color: '#d9cbb0', opacity: 0.6, textAlign: 'center', letterSpacing: 2 }}>
+            WAITING FOR PLAYERS ON BOTH SIDES…
           </div>
         )}
       </div>
-    </div>
+    </WesternBackdrop>
   );
 }
 
-interface TeamPanelProps {
-  title: string;
-  icon: React.ReactNode;
-  team: Team;
-  isSelected: boolean;
-  slotsPerSide: number;
-  players: Player[];
-  available: number;
-  onSelect: (team: Team) => void;
-}
-
-function TeamPanel({
-  title,
-  icon,
+function TeamPickCard({
   team,
-  isSelected,
-  slotsPerSide,
   players,
-  available,
-  onSelect,
-}: TeamPanelProps) {
-  const isFull = available <= 0;
-  const isDisabled = (isFull && !isSelected) || isSelected;
-  
-  // Dynamic styles based on team
-  const isSheriffTeam = team === 'sheriffs';
-  const borderColor = isSheriffTeam ? 'border-blue-600' : 'border-red-600';
-  const bgColor = isSheriffTeam ? 'bg-blue-50' : 'bg-red-50';
-  const textColor = isSheriffTeam ? 'text-blue-800' : 'text-red-800';
-  const ringColor = isSheriffTeam ? 'ring-blue-500' : 'ring-red-500';
+  max,
+  selected,
+  disabled,
+  onPick,
+}: {
+  team: Team;
+  players: Player[];
+  max: number;
+  selected: boolean;
+  disabled: boolean;
+  onPick: () => void;
+}) {
+  const isSheriff = team === 'sheriffs';
+  const main = isSheriff ? '#3a6fb5' : '#b53a3a';
+  const dark = isSheriff ? '#1f3d6b' : '#6b1f1f';
+  const isFull = players.length >= max && !selected;
+  const isDisabled = disabled || isFull;
 
   return (
     <button
-      className={cn(
-        "western-card p-4 md:p-6 text-left transition-all active:scale-[0.98] relative overflow-hidden group",
-        borderColor,
-        bgColor,
-        isSelected && `ring-4 ${ringColor} ring-offset-2 ring-offset-background`
-      )}
-      onClick={() => {
-        if (!isSelected) onSelect(team);
+      onClick={onPick}
+      disabled={isDisabled || selected}
+      style={{
+        ...S.wood,
+        border: `3px solid ${selected ? '#ffd875' : main}`,
+        flex: 1,
+        padding: 20,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        position: 'relative',
+        background: `linear-gradient(180deg, ${dark}66 0%, #1f140a 100%)`,
+        boxShadow: selected
+          ? `0 0 30px ${main}66, inset 0 0 30px ${main}33`
+          : 'inset 0 1px 0 rgba(255,200,150,0.1), 0 6px 20px rgba(0,0,0,0.5)',
+        cursor: isDisabled || selected ? 'default' : 'pointer',
+        opacity: isDisabled ? 0.5 : 1,
+        textAlign: 'left',
+        color: 'inherit',
       }}
-      disabled={isDisabled}
     >
-      <div className="flex items-center gap-4 mb-3">
-        <div className="text-4xl filter drop-shadow-sm group-hover:scale-110 transition-transform">{icon}</div>
-        <div>
-          <h2 className={cn("text-2xl uppercase font-display", textColor)}>{title}</h2>
-          <p className="text-sm text-neutral-600 font-mono">
-            {players.length} / {slotsPerSide} slots
-          </p>
+      {selected && (
+        <div
+          style={{
+            position: 'absolute',
+            top: -12,
+            right: 14,
+            ...S.mono,
+            fontSize: 10,
+            fontWeight: 'bold',
+            color: '#1a0e08',
+            background: '#ffd875',
+            padding: '3px 10px',
+            borderRadius: 3,
+            letterSpacing: 2,
+          }}
+        >
+          ✓ LOCKED IN
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        {isSheriff ? <StarEmblem size={56} /> : <SkullEmblem size={56} />}
+        <div style={{ flex: 1 }}>
+          <div style={{ ...S.title, color: main, fontSize: 30, letterSpacing: 2 }}>
+            {isSheriff ? 'SHERIFFS' : 'OUTLAWS'}
+          </div>
+          <div style={{ ...S.serif, color: '#d9cbb0', fontSize: 14, fontStyle: 'italic' }}>
+            {isSheriff ? 'Badge, duty, honor.' : 'Whiskey, dust, trouble.'}
+          </div>
+        </div>
+        <div style={{ ...S.mono, fontSize: 24, color: '#e0b04a', fontWeight: 'bold' }}>
+          {players.length}
+          <span style={{ opacity: 0.4, fontSize: 15 }}>/{max}</span>
         </div>
       </div>
-
-      <div className="space-y-2 mb-3 min-h-[60px]">
-        {players.length === 0 && (
-          <p className="text-sm text-neutral-400 italic">No one here yet</p>
-        )}
-        {players.map((p) => (
-          <div key={p.id} className="flex items-center justify-between text-sm bg-white/50 p-1.5 rounded border border-black/5">
-            <span className="font-semibold truncate">{p.name}</span>
-            <span className="text-xs text-neutral-500 uppercase font-mono">Slot {p.slot + 1}</span>
-          </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+        {Array.from({ length: max }).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              flex: 1,
+              height: 8,
+              borderRadius: 2,
+              background: i < players.length ? main : 'rgba(255,255,255,0.08)',
+              boxShadow: i < players.length ? `0 0 6px ${main}` : 'none',
+            }}
+          />
         ))}
       </div>
-
-      <div className="pt-2 border-t border-black/10">
-      {isSelected ? (
-        <p className="text-sm font-bold uppercase text-primary flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-          Current Team
-        </p>
-      ) : isFull ? (
-        <p className="text-sm font-bold uppercase text-destructive">Team Full</p>
-      ) : (
-        <p className="text-sm font-bold uppercase text-muted-foreground group-hover:text-foreground transition-colors">
-          Tap to Join
-        </p>
+      {isFull && (
+        <div style={{ ...S.mono, fontSize: 11, color: '#ff8080', letterSpacing: 2, fontWeight: 'bold' }}>
+          TEAM FULL
+        </div>
       )}
-      </div>
     </button>
   );
 }

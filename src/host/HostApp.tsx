@@ -89,6 +89,32 @@ export default function HostApp() {
       setGameState(state);
     });
 
+    // Apply resolution state in two stages so movement animates before
+    // damage/deaths become visible. Arena delays bullet animations by ~600ms
+    // (movement) + ~400ms (travel); HP/ammo/isAlive pop in at impact time.
+    const damageTimers: ReturnType<typeof setTimeout>[] = [];
+    const handleTickEnd = ({ state: resolvedState }: { state: GameState }) => {
+      setGameState((prev) => {
+        if (!prev) return resolvedState;
+        return {
+          ...resolvedState,
+          players: resolvedState.players.map((np) => {
+            const op = prev.players.find((p) => p.id === np.id);
+            if (!op) return np;
+            return { ...np, hp: op.hp, isAlive: op.isAlive, ammo: op.ammo };
+          }),
+          barrels: resolvedState.barrels.map((nb) => {
+            const ob = prev.barrels.find((b) => b.team === nb.team && b.slot === nb.slot);
+            return ob ? { ...nb, hp: ob.hp } : nb;
+          }),
+        };
+      });
+
+      const timer = setTimeout(() => setGameState(resolvedState), 1000);
+      damageTimers.push(timer);
+    };
+    socket.on('tickEnd', handleTickEnd);
+
     socket.on('error', (message) => {
       console.error('Socket error:', message);
       // If the room is not found (e.g. server restart), reset session and create a new room
@@ -108,7 +134,9 @@ export default function HostApp() {
     return () => {
       socket.off('roomCreated');
       socket.off('gameState');
+      socket.off('tickEnd', handleTickEnd);
       socket.off('error');
+      damageTimers.forEach(clearTimeout);
     };
   }, []);
 
