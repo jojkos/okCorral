@@ -4,6 +4,7 @@ import type { GameState } from '../../shared/types';
 import Lobby from './Lobby';
 import Arena from './Arena';
 import EndScreen from './EndScreen';
+import { startAmbient, stopAmbient, playVictory, playDefeat } from '../sound';
 
 const DEFAULT_CONFIG = {
   tickDuration: 4000,
@@ -29,8 +30,9 @@ export default function HostApp() {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [session, setSession] = useState<HostSession | null>(null);
   const hostIdRef = useRef<string | null>(null);
+  const prevPhaseRef = useRef<GameState['phase'] | null>(null);
+  const ambientOnRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -42,7 +44,6 @@ export default function HostApp() {
         const parsed = JSON.parse(savedSession) as HostSession;
         if (parsed.roomCode && parsed.hostId) {
           initialSession = parsed;
-          setSession(parsed);
           setRoomCode(parsed.roomCode);
         }
       } catch {
@@ -60,7 +61,6 @@ export default function HostApp() {
         setRoomCode(normalized);
         socket.emit('resumeHost', { roomCode: normalized, hostId });
         const nextSession: HostSession = { roomCode: normalized, hostId };
-        setSession(nextSession);
         sessionStorage.setItem(HOST_SESSION_KEY, JSON.stringify(nextSession));
       } else if (initialSession?.roomCode && initialSession.hostId) {
         socket.emit('resumeHost', { roomCode: initialSession.roomCode, hostId: initialSession.hostId });
@@ -72,28 +72,53 @@ export default function HostApp() {
       console.error(err);
     });
 
-    socket.on('roomCreated', ({ roomCode }) => {
-      setRoomCode(roomCode);
+    socket.on('roomCreated', ({ roomCode: newRoomCode }) => {
+      setRoomCode(newRoomCode);
       const hostId = hostIdRef.current || getOrCreateHostId();
       hostIdRef.current = hostId;
-      const nextSession: HostSession = { roomCode, hostId };
-      setSession(nextSession);
+      const nextSession: HostSession = { roomCode: newRoomCode, hostId };
       sessionStorage.setItem(HOST_SESSION_KEY, JSON.stringify(nextSession));
-      // Update URL with room code (replace, not push, since App already pushed host state)
       const url = new URL(window.location.href);
-      url.searchParams.set('code', roomCode);
-      window.history.replaceState({ roomCode }, '', url.toString());
+      url.searchParams.set('code', newRoomCode);
+      window.history.replaceState({ roomCode: newRoomCode }, '', url.toString());
     });
+
+    // Track pending damage-reveal timer so we can cancel if a new tickEnd
+    // arrives, and so the gameState handler can mask damage during that window.
+    let damageTimer: ReturnType<typeof setTimeout> | null = null;
+    let maskUntil = 0;
+
+    const maskedMerge = (prev: GameState | null, incoming: GameState): GameState => {
+      if (!prev || Date.now() >= maskUntil) return incoming;
+      // Preserve pre-resolution HP/ammo/alive + barrel HP so the animation
+      // window reveals damage on impact rather than on state broadcast.
+      return {
+        ...incoming,
+        players: incoming.players.map((np) => {
+          const op = prev.players.find((p) => p.id === np.id);
+          if (!op) return np;
+          return { ...np, hp: op.hp, isAlive: op.isAlive, ammo: op.ammo };
+        }),
+        barrels: incoming.barrels.map((nb) => {
+          const ob = prev.barrels.find((b) => b.team === nb.team && b.slot === nb.slot);
+          return ob ? { ...nb, hp: ob.hp } : nb;
+        }),
+      };
+    };
 
     socket.on('gameState', (state) => {
-      setGameState(state);
+      setGameState((prev) => maskedMerge(prev, state));
     });
 
-    // Apply resolution state in two stages so movement animates before
-    // damage/deaths become visible. Arena delays bullet animations by ~600ms
-    // (movement) + ~400ms (travel); HP/ammo/isAlive pop in at impact time.
-    const damageTimers: ReturnType<typeof setTimeout>[] = [];
     const handleTickEnd = ({ state: resolvedState }: { state: GameState }) => {
+      // Cancel any previous pending reveal so stale data can't stomp later.
+      if (damageTimer) {
+        clearTimeout(damageTimer);
+        damageTimer = null;
+      }
+      const animationMs = 1000;
+      maskUntil = Date.now() + animationMs;
+
       setGameState((prev) => {
         if (!prev) return resolvedState;
         return {
@@ -110,18 +135,19 @@ export default function HostApp() {
         };
       });
 
-      const timer = setTimeout(() => setGameState(resolvedState), 1000);
-      damageTimers.push(timer);
+      damageTimer = setTimeout(() => {
+        damageTimer = null;
+        maskUntil = 0;
+        setGameState(resolvedState);
+      }, animationMs);
     };
     socket.on('tickEnd', handleTickEnd);
 
     socket.on('error', (message) => {
       console.error('Socket error:', message);
-      // If the room is not found (e.g. server restart), reset session and create a new room
       if (message.includes('Room not found') || message.includes('Invalid room')) {
         console.log('Room not found, resetting session and creating new room...');
         sessionStorage.removeItem(HOST_SESSION_KEY);
-        setSession(null);
         setRoomCode(null);
         const hostId = hostIdRef.current || getOrCreateHostId();
         socket.emit('createRoom', { config: DEFAULT_CONFIG, hostId });
@@ -136,8 +162,33 @@ export default function HostApp() {
       socket.off('gameState');
       socket.off('tickEnd', handleTickEnd);
       socket.off('error');
-      damageTimers.forEach(clearTimeout);
+      if (damageTimer) clearTimeout(damageTimer);
     };
+  }, []);
+
+  // Ambient audio + phase-transition SFX
+  useEffect(() => {
+    const phase = gameState?.phase ?? null;
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+
+    if (phase && phase !== 'lobby' && phase !== 'ended' && !ambientOnRef.current) {
+      startAmbient();
+      ambientOnRef.current = true;
+    }
+    if ((phase === 'lobby' || phase === 'ended' || phase == null) && ambientOnRef.current) {
+      stopAmbient();
+      ambientOnRef.current = false;
+    }
+
+    if (prev !== 'ended' && phase === 'ended' && gameState?.winner) {
+      if (gameState.winner === 'draw') playDefeat();
+      else playVictory();
+    }
+  }, [gameState?.phase, gameState?.winner]);
+
+  useEffect(() => () => {
+    stopAmbient();
   }, []);
 
   if (!connected) {
@@ -155,7 +206,7 @@ export default function HostApp() {
       <div className="min-h-screen flex items-center justify-center p-8">
         <div className="western-card p-8 text-center max-w-md">
           <div className="text-2xl text-red-700 mb-4">⚠️ {error}</div>
-          <button 
+          <button
             className="western-btn western-btn-primary px-6 py-3"
             onClick={() => window.location.reload()}
           >

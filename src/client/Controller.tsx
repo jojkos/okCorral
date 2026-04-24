@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ClientPlayer, GameState, ActionType } from '../../shared/types';
 import { socket } from '../socket';
-import { playTickStart, playTickResolve } from '../sound';
+import { playTickStart, playTickResolve, playLockAction, playDeath, playDenied } from '../sound';
 import {
   WesternBackdrop,
   MiniCowboy,
@@ -48,13 +48,35 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
     };
   }, []);
 
+  // Clear a stuck optimistic lock if the server ever broadcasts authoritative
+  // state where this player isn't actually locked (e.g. server rejected the
+  // lockAction due to a planning→resolution race).
+  useEffect(() => {
+    if (lockedAction && myPlayer && !myPlayer.actionLocked && gameState?.phase === 'planning') {
+      setLockedAction(null);
+      playDenied();
+    }
+  }, [lockedAction, myPlayer?.actionLocked, gameState?.phase, myPlayer]);
+
+  // Death SFX: fire once when this player transitions alive → dead.
+  const wasAliveRef = useRef(true);
+  useEffect(() => {
+    if (myPlayer) {
+      if (wasAliveRef.current && !myPlayer.isAlive) {
+        playDeath();
+      }
+      wasAliveRef.current = myPlayer.isAlive;
+    }
+  }, [myPlayer?.isAlive, myPlayer]);
+
   const handleAction = useCallback((action: ActionType) => {
     if (lockedAction || !isPlanning || !myPlayer?.isAlive) return;
     if (action.startsWith('SHOOT') && (myPlayer?.ammo || 0) <= 0) return;
     if (action === 'RELOAD' && (myPlayer?.ammo || 0) >= 3) return;
     setLockedAction(action);
     socket.emit('lockAction', action);
-    if (navigator.vibrate) navigator.vibrate(50);
+    playLockAction();
+    try { navigator.vibrate?.(50); } catch { /* vibration unavailable */ }
   }, [lockedAction, isPlanning, myPlayer]);
 
   const hp = myPlayer?.hp ?? 3;

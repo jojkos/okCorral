@@ -112,5 +112,6 @@ export interface ClientToServerEvents {
   startGame: () => void;
   playAgain: () => void;
   endSession: () => void;
+  leaveRoom: () => void;
   updateConfig: (config: Partial<GameConfig>) => void;
 }

@@ -66,6 +66,8 @@ io.on("connection", (socket) => {
       socket.data.hostId = hostId;
       const roomCode = roomManager.createRoom(hostId, validConfig);
       socket.join(roomCode);
+      socket.data.roomCode = roomCode;
+      roomManager.noteSocketJoined(roomCode, socket.id);
       socket.emit("roomCreated", { roomCode });
       console.log(`Room created: ${roomCode} by ${socket.id}`);
     } catch (error) {
@@ -80,7 +82,9 @@ io.on("connection", (socket) => {
       const result = roomManager.resumeHost(roomCode, hostId);
       if (result.success) {
         socket.data.hostId = hostId;
+        socket.data.roomCode = roomCode;
         socket.join(roomCode);
+        roomManager.noteSocketJoined(roomCode, socket.id);
         if (result.state) {
           socket.emit("gameState", result.state);
         }
@@ -104,13 +108,16 @@ io.on("connection", (socket) => {
       );
 
       if (result.success) {
-        socket.join(roomCode.toUpperCase());
+        const upper = roomCode.toUpperCase();
+        socket.join(upper);
         socket.data.playerId = playerId;
+        socket.data.roomCode = upper;
+        roomManager.noteSocketJoined(upper, socket.id);
         socket.emit("joined", {
           player: result.player!,
-          roomCode: roomCode.toUpperCase(),
+          roomCode: upper,
         });
-        roomManager.broadcastState(roomCode.toUpperCase());
+        roomManager.broadcastState(upper);
       } else {
         socket.emit("error", result.error || "Failed to join room");
       }
@@ -188,7 +195,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // End session
+  // End session (host only — tears down the whole room + timers)
   socket.on("endSession", () => {
     const hostId = socket.data.hostId as string | undefined;
     if (!hostId) return;
@@ -196,6 +203,17 @@ io.on("connection", (socket) => {
     if (roomCode) {
       roomManager.endSession(roomCode);
     }
+  });
+
+  // Client leaves the room (remove from lobby roster; spectator during games)
+  socket.on("leaveRoom", () => {
+    const playerId = socket.data.playerId as string | undefined;
+    const roomCode = socket.data.roomCode as string | undefined;
+    if (!playerId || !roomCode) return;
+    roomManager.removePlayer(playerId, roomCode);
+    socket.leave(roomCode);
+    roomManager.noteSocketLeft(roomCode, socket.id);
+    socket.data.roomCode = undefined;
   });
 
   // Host updates config
@@ -212,11 +230,15 @@ io.on("connection", (socket) => {
     console.log(`Client disconnected: ${socket.id}`);
     const playerId = socket.data.playerId as string | undefined;
     const hostId = socket.data.hostId as string | undefined;
+    const roomCode = socket.data.roomCode as string | undefined;
     if (playerId) {
       roomManager.handleDisconnect(playerId);
     }
     if (hostId && hostId !== playerId) {
       roomManager.handleDisconnect(hostId);
+    }
+    if (roomCode) {
+      roomManager.noteSocketLeft(roomCode, socket.id);
     }
   });
 });

@@ -54,30 +54,45 @@ export function resolveActions(state: GameState): ActionResult {
     }
   });
 
-  // Resolve moves - check for collisions
+  // Resolve moves - check for collisions and swap conflicts.
+  // Players cannot phase through each other: if A and B would trade slots
+  // in the same tick, both attempts fail and both stay put.
+  const blockedMoverIds = new Set<string>();
+  for (let i = 0; i < moveAttempts.length; i++) {
+    for (let j = i + 1; j < moveAttempts.length; j++) {
+      const a = moveAttempts[i];
+      const b = moveAttempts[j];
+      if (a.player.team !== b.player.team) continue;
+      const swapping =
+        a.player.slot === b.targetSlot && b.player.slot === a.targetSlot;
+      if (swapping) {
+        blockedMoverIds.add(a.player.id);
+        blockedMoverIds.add(b.player.id);
+      }
+    }
+  }
+
   const slotOccupancy = new Map<string, string>(); // "team-slot" -> playerId
 
-  // First, mark current positions (excluding movers)
+  // Mark current positions (excluding movers whose move might succeed).
+  // Blocked swap-movers stay put, so their current slot is reserved.
   newState.players.forEach((p) => {
-    if (
-      p.isAlive &&
-      p.slot >= 0 &&
-      !moveAttempts.find((m) => m.player.id === p.id)
-    ) {
+    if (!p.isAlive || p.slot < 0) return;
+    const attempt = moveAttempts.find((m) => m.player.id === p.id);
+    if (!attempt || blockedMoverIds.has(p.id)) {
       slotOccupancy.set(`${p.team}-${p.slot}`, p.id);
     }
   });
 
-  // Process moves in order, first come first served
+  // Process moves in order, first come first served. Blocked movers skip.
   moveAttempts.forEach(({ player, targetSlot }) => {
+    if (blockedMoverIds.has(player.id)) return;
     const key = `${player.team}-${targetSlot}`;
     if (!slotOccupancy.has(key)) {
-      // Slot is free, move there
       slotOccupancy.set(key, player.id);
       player.slot = targetSlot;
-      player.isCovered = false; // Moving makes you uncovered
+      player.isCovered = false;
     }
-    // If slot is taken, player stays in place
   });
 
   // Process cover

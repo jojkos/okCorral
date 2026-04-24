@@ -17,7 +17,22 @@ interface Room {
   hostId: string;
   state: GameState;
   tickTimer: NodeJS.Timeout | null;
+  // setTimeout that schedules the next planning phase after resolution. Must
+  // be cancelled on reset/end so a stale fire doesn't rekindle a dead room.
+  continuationTimer: NodeJS.Timeout | null;
+  // Fires on the animation budget after a game-ending resolution, emitting
+  // the final state + gameEnded. Keeps the final volley visible.
+  gameEndTimer: NodeJS.Timeout | null;
+  // When the room has no connected sockets we start a grace timer. If nobody
+  // reconnects, the room is deleted and all timers cleared.
+  idleCleanupTimer: NodeJS.Timeout | null;
+  // Socket IDs currently in the room. Updated by server/index.ts on
+  // connect/disconnect so we don't need to await fetchSockets().
+  sockets: Set<string>;
 }
+
+const IDLE_CLEANUP_MS = 5 * 60 * 1000; // 5 minutes with no connected sockets
+const GAME_END_ANIM_MS = 1600; // matches client bullet+impact budget
 
 // Player to room mapping
 const playerRooms = new Map<string, string>();
@@ -88,10 +103,38 @@ export class RoomManager {
       hostId,
       state: createInitialState(code, config),
       tickTimer: null,
+      continuationTimer: null,
+      gameEndTimer: null,
+      idleCleanupTimer: null,
+      sockets: new Set(),
     };
     rooms.set(code, room);
     playerRooms.set(hostId, code);
     return code;
+  }
+
+  // Called by server/index.ts so the RoomManager tracks live socket membership
+  // and can cancel/start idle cleanup timers deterministically.
+  noteSocketJoined(roomCode: string, socketId: string): void {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    room.sockets.add(socketId);
+    if (room.idleCleanupTimer) {
+      clearTimeout(room.idleCleanupTimer);
+      room.idleCleanupTimer = null;
+    }
+  }
+
+  noteSocketLeft(roomCode: string, socketId: string): void {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    room.sockets.delete(socketId);
+    if (room.sockets.size === 0 && !room.idleCleanupTimer) {
+      room.idleCleanupTimer = setTimeout(() => {
+        const r = rooms.get(roomCode);
+        if (r && r.sockets.size === 0) this.endSession(roomCode);
+      }, IDLE_CLEANUP_MS);
+    }
   }
 
   joinRoom(
@@ -203,24 +246,42 @@ export class RoomManager {
     const player = room.state.players.find((p) => p.id === playerId);
     if (!player) return { success: false, error: "Player not found" };
 
+    // Re-selecting the same team while already seated is a no-op — don't
+    // reshuffle the player's slot out from under them.
+    if (player.team === team && player.slot >= 0) {
+      return { success: true };
+    }
+
+    // Temporarily vacate current slot so findAvailableSlot doesn't count us.
+    const previousSlot = player.slot;
+    if (player.slot >= 0) player.slot = -1;
+
     const slot = findAvailableSlot(
       room.state.players,
       team,
       room.state.config.slotsPerSide,
     );
     if (slot === null) {
+      // Restore and report failure.
+      player.slot = previousSlot;
       return { success: false, error: "Team is full" };
-    }
-
-    // Leave current team if on one
-    if (player.slot >= 0) {
-      player.slot = -1;
     }
 
     player.team = team;
     player.slot = slot;
-
     return { success: true };
+  }
+
+  // Called when a player explicitly leaves or their socket disconnects during
+  // lobby. Removes them entirely so team counts stay honest and the room can
+  // go idle if empty. No-op during an active game to avoid mid-match surgery.
+  removePlayer(playerId: string, roomCode: string): void {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    if (room.state.phase !== "lobby") return;
+    room.state.players = room.state.players.filter((p) => p.id !== playerId);
+    playerRooms.delete(playerId);
+    this.broadcastState(roomCode);
   }
 
   leaveTeam(playerId: string, roomCode: string): void {
@@ -384,25 +445,34 @@ export class RoomManager {
       (p) => p.team === "outlaws" && p.isAlive && p.slot >= 0,
     ).length;
 
-    if (sheriffsAlive === 0 && outlawsAlive === 0) {
-      room.state.winner = "draw";
-      room.state.phase = "ended";
-      this.io.to(roomCode).emit("gameEnded", { winner: "draw" });
-      this.broadcastState(roomCode);
-    } else if (sheriffsAlive === 0) {
-      room.state.winner = "outlaws";
-      room.state.phase = "ended";
-      this.io.to(roomCode).emit("gameEnded", { winner: "outlaws" });
-      this.broadcastState(roomCode);
-    } else if (outlawsAlive === 0) {
-      room.state.winner = "sheriffs";
-      room.state.phase = "ended";
-      this.io.to(roomCode).emit("gameEnded", { winner: "sheriffs" });
-      this.broadcastState(roomCode);
+    const winner: Team | "draw" | null =
+      sheriffsAlive === 0 && outlawsAlive === 0
+        ? "draw"
+        : sheriffsAlive === 0
+          ? "outlaws"
+          : outlawsAlive === 0
+            ? "sheriffs"
+            : null;
+
+    if (winner) {
+      // Defer the 'ended' transition so the final volley's animation plays
+      // on the host before the EndScreen replaces the arena.
+      room.gameEndTimer = setTimeout(() => {
+        const r = rooms.get(roomCode);
+        if (!r) return;
+        r.gameEndTimer = null;
+        r.state.winner = winner;
+        r.state.phase = "ended";
+        this.io.to(roomCode).emit("gameEnded", { winner });
+        this.broadcastState(roomCode);
+      }, GAME_END_ANIM_MS);
     } else {
       // Continue to next tick after delay for animation sequence
       // (600ms movement + 400ms bullet travel + impact display)
-      setTimeout(() => {
+      room.continuationTimer = setTimeout(() => {
+        const r = rooms.get(roomCode);
+        if (!r) return;
+        r.continuationTimer = null;
         this.startPlanningPhase(roomCode);
       }, 2000);
     }
@@ -412,10 +482,9 @@ export class RoomManager {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    if (room.tickTimer) {
-      clearTimeout(room.tickTimer);
-      room.tickTimer = null;
-    }
+    if (room.tickTimer) { clearTimeout(room.tickTimer); room.tickTimer = null; }
+    if (room.continuationTimer) { clearTimeout(room.continuationTimer); room.continuationTimer = null; }
+    if (room.gameEndTimer) { clearTimeout(room.gameEndTimer); room.gameEndTimer = null; }
 
     room.state.phase = "lobby";
     room.state.tick = 0;
@@ -444,17 +513,19 @@ export class RoomManager {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    if (room.tickTimer) {
-      clearTimeout(room.tickTimer);
-    }
+    if (room.tickTimer) clearTimeout(room.tickTimer);
+    if (room.continuationTimer) clearTimeout(room.continuationTimer);
+    if (room.gameEndTimer) clearTimeout(room.gameEndTimer);
+    if (room.idleCleanupTimer) clearTimeout(room.idleCleanupTimer);
 
-    // Remove all players from this room
-    room.state.players.forEach((p) => {
-      playerRooms.delete(p.id);
-    });
+    room.state.players.forEach((p) => playerRooms.delete(p.id));
     playerRooms.delete(room.hostId);
 
     rooms.delete(roomCode);
+  }
+
+  roomExists(roomCode: string): boolean {
+    return rooms.has(roomCode);
   }
 
   updateConfig(
@@ -472,13 +543,16 @@ export class RoomManager {
       );
     }
     if (config.slotsPerSide !== undefined) {
-      room.state.config.slotsPerSide = Math.max(
-        2,
-        Math.min(8, config.slotsPerSide),
-      );
+      const newMax = Math.max(2, Math.min(8, config.slotsPerSide));
+      room.state.config.slotsPerSide = newMax;
+      // Evict players sitting beyond the new cap back to "unassigned" so the
+      // lobby UI and startGame validation don't disagree.
+      room.state.players.forEach((p) => {
+        if (p.slot >= newMax) p.slot = -1;
+      });
       // Recreate barrels
       room.state.barrels = [];
-      for (let slot = 0; slot < room.state.config.slotsPerSide; slot++) {
+      for (let slot = 0; slot < newMax; slot++) {
         room.state.barrels.push({ team: "sheriffs", slot, hp: 3 });
         room.state.barrels.push({ team: "outlaws", slot, hp: 3 });
       }

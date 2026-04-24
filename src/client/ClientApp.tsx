@@ -119,6 +119,7 @@ export default function ClientApp() {
   // The JoinScreen will pre-fill with session data, allowing the user to confirm or change code.
 
   const leaveSession = () => {
+    try { socket.emit('leaveRoom'); } catch { /* socket not ready */ }
     sessionStorage.removeItem(CLIENT_SESSION_KEY);
     setSession(null);
     setPlayer(null);
@@ -180,7 +181,7 @@ export default function ClientApp() {
         playerTeam={myPlayer?.team || null}
         onPlayAgain={() => socket.emit('playAgain')}
         onEndSession={() => {
-          socket.emit('endSession');
+          socket.emit('leaveRoom');
           sessionStorage.removeItem(CLIENT_SESSION_KEY);
           window.location.reload();
         }}

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { GameState, Player, Barrel, Bullet, Team } from '../../shared/types';
+import { playGunshot, playBulletImpact } from '../sound';
 
 interface CanvasArenaProps {
   gameState: GameState;
@@ -79,9 +80,13 @@ interface Particle {
   fade?: boolean;
 }
 
+const PARTICLE_CAP = 800;
 class ParticleSystem {
   parts: Particle[] = [];
-  add(p: Particle) { this.parts.push(p); }
+  add(p: Particle) {
+    if (this.parts.length >= PARTICLE_CAP) this.parts.shift();
+    this.parts.push(p);
+  }
   step(dt: number) {
     for (const p of this.parts) {
       p.age += dt;
@@ -247,6 +252,7 @@ export default function CanvasArena({ gameState, bulletsToAnimate, onBulletsCons
 
       const launchDelay = i * 0.04;
       scheduled.push(setTimeout(() => {
+        playGunshot();
         st.muzzles.push({ x: fromX, y: fromY, t: st.t, life: 0.18, dir: isSheriff ? 1 : -1 });
         for (let k = 0; k < 8; k++) {
           st.particles.add({
@@ -276,6 +282,7 @@ export default function CanvasArena({ gameState, bulletsToAnimate, onBulletsCons
           hit: b.hit,
         });
         scheduled.push(setTimeout(() => {
+          playBulletImpact(b.hit);
           if (b.hit !== 'miss') {
             st.impacts.push({ x: toX, y: toY, t: st.t, kind: b.hit as 'player' | 'barrel' | 'bullet', team: b.fromTeam });
             st.shake.mag = Math.max(st.shake.mag, b.hit === 'player' ? 22 : b.hit === 'bullet' ? 18 : 14);
