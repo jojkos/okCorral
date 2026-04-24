@@ -48,15 +48,12 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
     };
   }, []);
 
-  // Clear a stuck optimistic lock if the server ever broadcasts authoritative
-  // state where this player isn't actually locked (e.g. server rejected the
-  // lockAction due to a planning→resolution race).
+  // When the server confirms the lock (actionLocked flips true), cancel the
+  // pending ack-timeout so we don't revert a valid lock.
   useEffect(() => {
-    if (lockedAction && myPlayer && !myPlayer.actionLocked && gameState?.phase === 'planning') {
-      setLockedAction(null);
-      playDenied();
-    }
-  }, [lockedAction, myPlayer?.actionLocked, gameState?.phase, myPlayer]);
+    if (myPlayer?.actionLocked) clearAckTimer();
+  }, [myPlayer?.actionLocked]);
+  useEffect(() => () => clearAckTimer(), []);
 
   // Death SFX: fire once when this player transitions alive → dead.
   const wasAliveRef = useRef(true);
@@ -69,6 +66,17 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
     }
   }, [myPlayer?.isAlive, myPlayer]);
 
+  // Ack tracking: when we emit a lockAction we give the server a short window
+  // to echo it back. If actionLocked doesn't flip true in time we assume the
+  // emit raced against a phase change and revert the optimistic lock.
+  const lockAckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearAckTimer = () => {
+    if (lockAckTimerRef.current) {
+      clearTimeout(lockAckTimerRef.current);
+      lockAckTimerRef.current = null;
+    }
+  };
+
   const handleAction = useCallback((action: ActionType) => {
     if (lockedAction || !isPlanning || !myPlayer?.isAlive) return;
     if (action.startsWith('SHOOT') && (myPlayer?.ammo || 0) <= 0) return;
@@ -77,6 +85,13 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
     socket.emit('lockAction', action);
     playLockAction();
     try { navigator.vibrate?.(50); } catch { /* vibration unavailable */ }
+
+    clearAckTimer();
+    lockAckTimerRef.current = setTimeout(() => {
+      lockAckTimerRef.current = null;
+      setLockedAction((cur) => (cur === action ? null : cur));
+      playDenied();
+    }, 600);
   }, [lockedAction, isPlanning, myPlayer]);
 
   const hp = myPlayer?.hp ?? 3;
@@ -266,16 +281,17 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
         )}
 
         {/* Controls */}
-        <div style={{ padding: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ padding: 18, display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: 12 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <DpadBtn label="▲ UP" disabled={!!lockedAction || !isPlanning} onClick={() => handleAction('MOVE_UP')} active={lockedAction === 'MOVE_UP'} />
             <DpadBtn label="▼ DOWN" disabled={!!lockedAction || !isPlanning} onClick={() => handleAction('MOVE_DOWN')} active={lockedAction === 'MOVE_DOWN'} />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 8 }}>
-            <ActionBtn color="#b53a3a" icon="↗" label="SHOOT UP" disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_UP')} active={lockedAction === 'SHOOT_UP'} />
-            <ActionBtn color="#b53a3a" icon={isSheriff ? '→' : '←'} label="SHOOT" primary disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_STRAIGHT')} active={lockedAction === 'SHOOT_STRAIGHT'} />
             <ActionBtn color="#3a6fb5" icon="🛡" label="COVER" disabled={!!lockedAction || !isPlanning} onClick={() => handleAction('COVER')} active={lockedAction === 'COVER'} />
             <ActionBtn color="#e0b04a" icon="⟳" label="RELOAD" disabled={!!lockedAction || !isPlanning || ammo >= 3} onClick={() => handleAction('RELOAD')} active={lockedAction === 'RELOAD'} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <ActionBtn color="#b53a3a" icon={isSheriff ? '↗' : '↖'} label="SHOOT UP" disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_UP')} active={lockedAction === 'SHOOT_UP'} />
+            <ActionBtn color="#b53a3a" icon={isSheriff ? '→' : '←'} label="SHOOT" primary disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_STRAIGHT')} active={lockedAction === 'SHOOT_STRAIGHT'} />
+            <ActionBtn color="#b53a3a" icon={isSheriff ? '↘' : '↙'} label="SHOOT DOWN" disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_DOWN')} active={lockedAction === 'SHOOT_DOWN'} />
           </div>
           <button
             onClick={onLeave}

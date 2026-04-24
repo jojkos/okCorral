@@ -878,17 +878,27 @@ function drawPlayerHUD(ctx: CanvasRenderingContext2D, x: number, y: number, play
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  // Hearts: 3 stacked, large enough to read at distance
+  const heartSpacing = 22;
+  const heartTop = y - 40;
   for (let i = 0; i < 3; i++) {
-    drawHeart(ctx, x, y - 18 + i * 12, 5, i < player.hp ? '#ff4c4c' : '#2a1012');
+    drawHeart(ctx, x, heartTop + i * heartSpacing, 10, i < player.hp ? '#ff4c4c' : '#2a1012');
   }
+  // Ammo: 3 stacked below hearts
+  const ammoSpacing = 18;
+  const ammoTop = y + 34;
   for (let i = 0; i < 3; i++) {
-    const by = y + 20 + i * 9;
+    const by = ammoTop + i * ammoSpacing;
     ctx.fillStyle = i < player.ammo ? COL.goldBright : '#333';
     ctx.strokeStyle = '#1a1410';
-    ctx.lineWidth = 1;
-    roundRect(ctx, x - 4, by - 3, 8, 6, 1.5);
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, x - 8, by - 6, 16, 12, 3);
     ctx.fill();
     ctx.stroke();
+    if (i < player.ammo) {
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(x - 6, by - 4, 12, 1.5);
+    }
   }
   ctx.restore();
 }

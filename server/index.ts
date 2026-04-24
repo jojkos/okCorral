@@ -172,16 +172,18 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Any player can start the game
+  // Either host or any joined player can start the game.
   socket.on("startGame", () => {
     const playerId = socket.data.playerId as string | undefined;
-    if (!playerId) return;
-    const roomCode = roomManager.getPlayerRoom(playerId);
-    if (roomCode) {
-      const result = roomManager.startGame(roomCode);
-      if (!result.success) {
-        socket.emit("error", result.error || "Cannot start game");
-      }
+    const hostId = socket.data.hostId as string | undefined;
+    const roomCode =
+      (playerId && roomManager.getPlayerRoom(playerId)) ||
+      (hostId && roomManager.getPlayerRoom(hostId)) ||
+      (socket.data.roomCode as string | undefined);
+    if (!roomCode) return;
+    const result = roomManager.startGame(roomCode);
+    if (!result.success) {
+      socket.emit("error", result.error || "Cannot start game");
     }
   });
 

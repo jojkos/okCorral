@@ -29,12 +29,22 @@ export default function Arena({ gameState }: ArenaProps) {
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black overflow-hidden">
-      <CanvasArena
-        gameState={gameState}
-        bulletsToAnimate={bulletsToAnimate}
-        onBulletsConsumed={() => setBulletsToAnimate(null)}
-      />
+    <div className="fixed inset-0 bg-black overflow-hidden flex items-center justify-center">
+      <div
+        style={{
+          aspectRatio: '1600 / 900',
+          maxWidth: '100vw',
+          maxHeight: '100vh',
+          width: '100%',
+          height: '100%',
+        }}
+      >
+        <CanvasArena
+          gameState={gameState}
+          bulletsToAnimate={bulletsToAnimate}
+          onBulletsConsumed={() => setBulletsToAnimate(null)}
+        />
+      </div>
     </div>
   );
 }
