@@ -7,10 +7,13 @@ import type {
   Team,
   ActionType,
   ClientPlayer,
+  PlayerStats,
+  Emote,
   ServerToClientEvents,
   ClientToServerEvents,
 } from "../shared/types.js";
 import { resolveActions } from "./actions.js";
+import { chooseBotAction, BOT_NAMES } from "./bots.js";
 
 interface Room {
   code: string;
@@ -29,10 +32,37 @@ interface Room {
   // Socket IDs currently in the room. Updated by server/index.ts on
   // connect/disconnect so we don't need to await fetchSockets().
   sockets: Set<string>;
+  // Pending bot decisions for the current planning phase.
+  botTimers: NodeJS.Timeout[];
+  // playerId -> last emote timestamp, for rate limiting.
+  lastEmote: Map<string, number>;
 }
 
 const IDLE_CLEANUP_MS = 5 * 60 * 1000; // 5 minutes with no connected sockets
-const GAME_END_ANIM_MS = 1600; // matches client bullet+impact budget
+// Presentation budgets (see src/lib/presentation.ts VOLLEY). These only pace
+// the animation between rounds; planning duration and rules are untouched.
+const RESOLUTION_MS = 2600; // reveal → move → volley → impact → settle
+const GAME_END_ANIM_MS = 3600; // final volley + slow-motion killing blow
+const EMOTE_COOLDOWN_MS = 1200;
+
+// During planning, locked choices are secret: everyone can see *that* a player
+// is ready, never *what* they picked. Each phone learns its own choice from the
+// submitAction acknowledgement. Resolution/ended states are sent in full.
+export function publicState(state: GameState): GameState {
+  if (state.phase !== "planning") return state;
+  return {
+    ...state,
+    pendingActions: [],
+    players: state.players.map((p) => ({ ...p, currentAction: "NONE" as ActionType })),
+  };
+}
+
+export function emptyStats(): PlayerStats {
+  return {
+    shots: 0, hits: 0, barrelHits: 0, misses: 0, clashes: 0, kills: 0,
+    damageTaken: 0, blocked: 0, covers: 0, reloads: 0, moves: 0, diedOnTick: null,
+  };
+}
 
 // Player to room mapping
 const playerRooms = new Map<string, string>();
@@ -72,6 +102,7 @@ function createInitialState(roomCode: string, config: GameConfig): GameState {
     tickStartTime: null,
     pendingActions: [],
     lastTickBullets: [],
+    session: { sheriffs: 0, outlaws: 0, draws: 0 },
   };
 }
 
@@ -108,6 +139,8 @@ export class RoomManager {
       gameEndTimer: null,
       idleCleanupTimer: null,
       sockets: new Set(),
+      botTimers: [],
+      lastEmote: new Map(),
     };
     rooms.set(code, room);
     playerRooms.set(hostId, code);
@@ -363,6 +396,7 @@ export class RoomManager {
         p.actionLocked = false;
         p.currentAction = "NONE";
         p.isCovered = false;
+        p.stats = emptyStats();
       }
     });
 
@@ -428,6 +462,8 @@ export class RoomManager {
 
     this.broadcastState(roomCode);
 
+    this.scheduleBots(room);
+
     // Set timer for resolution
     room.tickTimer = setTimeout(() => {
       this.resolveTick(roomCode);
@@ -447,6 +483,7 @@ export class RoomManager {
     const result = resolveActions(room.state);
     room.state = result.state;
     room.state.lastTickBullets = result.bullets;
+    this.tallyStats(room, result.bullets);
 
     // Broadcast tick end with animation data
     this.io.to(roomCode).emit("tickEnd", {
@@ -473,6 +510,9 @@ export class RoomManager {
             : null;
 
     if (winner) {
+      const session = (room.state.session ??= { sheriffs: 0, outlaws: 0, draws: 0 });
+      if (winner === "draw") session.draws++;
+      else session[winner]++;
       // Defer the 'ended' transition so the final volley's animation plays
       // on the host before the EndScreen replaces the arena.
       room.gameEndTimer = setTimeout(() => {
@@ -492,7 +532,7 @@ export class RoomManager {
         if (!r) return;
         r.continuationTimer = null;
         this.startPlanningPhase(roomCode);
-      }, 2000);
+      }, RESOLUTION_MS);
     }
   }
 
@@ -503,6 +543,7 @@ export class RoomManager {
     if (room.tickTimer) { clearTimeout(room.tickTimer); room.tickTimer = null; }
     if (room.continuationTimer) { clearTimeout(room.continuationTimer); room.continuationTimer = null; }
     if (room.gameEndTimer) { clearTimeout(room.gameEndTimer); room.gameEndTimer = null; }
+    this.clearBots(room);
 
     room.state.resolutionFrom = undefined;
     room.state.resolutionStartedAt = undefined;
@@ -537,11 +578,98 @@ export class RoomManager {
     if (room.continuationTimer) clearTimeout(room.continuationTimer);
     if (room.gameEndTimer) clearTimeout(room.gameEndTimer);
     if (room.idleCleanupTimer) clearTimeout(room.idleCleanupTimer);
+    this.clearBots(room);
 
     room.state.players.forEach((p) => playerRooms.delete(p.id));
     playerRooms.delete(room.hostId);
 
     rooms.delete(roomCode);
+  }
+
+  private clearBots(room: Room): void {
+    room.botTimers.forEach(clearTimeout);
+    room.botTimers = [];
+  }
+
+  // Bots lock in like a human would: at a random moment in the window,
+  // never in the last ~400ms so they don't race the round end.
+  private scheduleBots(room: Room): void {
+    this.clearBots(room);
+    const window = Math.max(300, room.state.config.tickDuration - 400);
+    for (const bot of room.state.players.filter((p) => p.isBot && p.isAlive && p.slot >= 0)) {
+      const delay = 350 + Math.random() * Math.max(0, window - 350);
+      room.botTimers.push(setTimeout(() => {
+        const r = rooms.get(room.code);
+        if (!r || r.state.phase !== "planning") return;
+        const live = r.state.players.find((p) => p.id === bot.id);
+        if (!live || !live.isAlive || live.actionLocked) return;
+        this.lockAction(live.id, r.code, chooseBotAction(r.state, live));
+      }, delay));
+    }
+  }
+
+  private tallyStats(room: Room, bullets: GameState["lastTickBullets"]): void {
+    const byId = new Map(room.state.players.map((p) => [p.id, p]));
+    for (const p of room.state.players) {
+      if (p.slot < 0) continue;
+      const s = (p.stats ??= emptyStats());
+      if (p.currentAction === "COVER") s.covers++;
+      else if (p.currentAction === "RELOAD") s.reloads++;
+      else if (p.currentAction.startsWith("MOVE")) s.moves++;
+      if (!p.isAlive && s.diedOnTick === null) s.diedOnTick = room.state.tick;
+    }
+    for (const b of bullets) {
+      const shooter = b.shooterId ? byId.get(b.shooterId)?.stats : undefined;
+      const target = b.targetId ? byId.get(b.targetId)?.stats : undefined;
+      if (shooter) shooter.shots++;
+      if (b.hit === "player") {
+        if (shooter) { shooter.hits++; if (b.lethal) shooter.kills++; }
+        if (target) target.damageTaken++;
+      } else if (b.hit === "barrel") {
+        if (shooter) shooter.barrelHits++;
+        if (target) target.blocked++;
+      } else if (b.hit === "miss") {
+        if (shooter) shooter.misses++;
+      } else if (b.hit === "bullet") {
+        if (shooter) shooter.clashes++;
+      }
+    }
+  }
+
+  addBot(roomCode: string, team: Team): { success: boolean; error?: string } {
+    const room = rooms.get(roomCode);
+    if (!room || room.state.phase !== "lobby") return { success: false, error: "Bots can only join in the lobby" };
+    const slot = findAvailableSlot(room.state.players, team, room.state.config.slotsPerSide);
+    if (slot === null) return { success: false, error: "Team is full" };
+    const taken = new Set(room.state.players.map((p) => p.name));
+    const name = BOT_NAMES.find((n) => !taken.has(n)) ?? `Bot ${room.state.players.length + 1}`;
+    room.state.players.push({
+      id: `bot-${roomCode}-${Math.random().toString(36).slice(2, 9)}`,
+      name, team, slot, hp: 3, ammo: 1, isAlive: true, actionLocked: false,
+      currentAction: "NONE", isCovered: false, isBot: true,
+    });
+    this.broadcastState(roomCode);
+    return { success: true };
+  }
+
+  removeBot(roomCode: string, team: Team): void {
+    const room = rooms.get(roomCode);
+    if (!room || room.state.phase !== "lobby") return;
+    const bots = room.state.players.filter((p) => p.isBot && p.team === team);
+    const last = bots[bots.length - 1];
+    if (!last) return;
+    room.state.players = room.state.players.filter((p) => p.id !== last.id);
+    this.broadcastState(roomCode);
+  }
+
+  // Cosmetic only. Rate-limited so phones can't spam the TV.
+  emote(roomCode: string, playerId: string, emoji: Emote): void {
+    const room = rooms.get(roomCode);
+    if (!room || !room.state.players.some((p) => p.id === playerId)) return;
+    const now = Date.now();
+    if (now - (room.lastEmote.get(playerId) ?? 0) < EMOTE_COOLDOWN_MS) return;
+    room.lastEmote.set(playerId, now);
+    this.io.to(roomCode).emit("emote", { playerId, emoji });
   }
 
   roomExists(roomCode: string): boolean {
@@ -603,6 +731,6 @@ export class RoomManager {
     const room = rooms.get(roomCode);
     if (!room) return;
     room.state.revision++;
-    this.io.to(roomCode).emit("gameState", room.state);
+    this.io.to(roomCode).emit("gameState", publicState(room.state));
   }
 }

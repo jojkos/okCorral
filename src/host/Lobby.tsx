@@ -2,14 +2,17 @@ import { useState, useEffect } from 'react';
 import type { GameState, Player, GameConfig, Team } from '../../shared/types';
 import { socket } from '../socket';
 import QRCode from 'qrcode';
+import { Bot, Hourglass, Smartphone, UserMinus, UserPlus } from 'lucide-react';
 import {
   WesternBackdrop,
   StarEmblem,
   SkullEmblem,
-  MiniCowboy,
   WesternBtn,
   westernStyles as S,
 } from '../components/WesternUI';
+import HowToPlay from './components/HowToPlay';
+import { BotBadge, PlayerAvatar, SessionScore, hasSessionGames } from './components/HostBits';
+import './host.css';
 
 interface LobbyProps {
   roomCode: string | null;
@@ -26,7 +29,7 @@ export default function Lobby({ roomCode, gameState, error }: LobbyProps) {
     if (roomCode) {
       const joinUrl = `${window.location.origin}?join=${roomCode}`;
       QRCode.toDataURL(joinUrl, {
-        width: 200,
+        width: 320,
         margin: 2,
         color: { dark: '#3e2417', light: '#e8d8b8' },
       }).then(setQrCodeUrl);
@@ -49,8 +52,8 @@ export default function Lobby({ roomCode, gameState, error }: LobbyProps) {
   if (!roomCode) {
     return (
       <WesternBackdrop>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-3xl animate-pulse" style={{ ...S.title, fontSize: 32 }}>
+        <div className="host-screen min-h-screen flex items-center justify-center">
+          <div className="animate-pulse" style={{ ...S.title, fontSize: 'calc(var(--u) * 2.4)' }}>
             {error || 'Setting up the Saloon…'}
           </div>
         </div>
@@ -58,132 +61,100 @@ export default function Lobby({ roomCode, gameState, error }: LobbyProps) {
     );
   }
 
+  const slotsPerSide = gameState?.config.slotsPerSide ?? localConfig.slotsPerSide;
   const sheriffs = gameState?.players.filter((p) => p.team === 'sheriffs' && p.slot >= 0) || [];
   const outlaws = gameState?.players.filter((p) => p.team === 'outlaws' && p.slot >= 0) || [];
   const unassigned = gameState?.players.filter((p) => p.slot < 0) || [];
   const canStart = sheriffs.length > 0 && outlaws.length > 0;
+  const missing = [sheriffs.length === 0 && 'Sheriffs', outlaws.length === 0 && 'Outlaws'].filter(Boolean) as string[];
+  const roundSeconds = +(localConfig.tickDuration / 1000).toFixed(1);
 
   return (
     <WesternBackdrop>
-      <div className="lobby-layout"
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          padding: 36,
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 24,
-        }}
-      >
+      <div className={`host-screen hl${slotsPerSide >= 6 ? ' hl--dense' : ''}`}>
+        <Dust />
+
         {/* Header */}
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ ...S.mono, fontSize: 11, color: '#e0b04a', letterSpacing: 3, opacity: 0.8 }}>★ NOW PLAYING ★</div>
-            <h1 className="lobby-title" style={{ ...S.title, fontSize: 68, margin: '4px 0 0 0', lineHeight: 1 }}>O.K. Corral</h1>
-            <div className="lobby-subtitle" style={{ ...S.serif, color: '#d9cbb0', fontSize: 22, marginTop: 8, letterSpacing: 1 }}>
-              Draw yer irons — the Marshal's called a reckonin'
+        <header className="hl-head">
+          <div className="hl-brand">
+            <div className="hl-sign" aria-label="O.K. Corral">
+              <span className="hl-sign__chain hl-sign__chain--l" />
+              <span className="hl-sign__chain hl-sign__chain--r" />
+              <div className="hl-sign__plank">
+                <span className="hl-sign__kicker">★ Saloon &amp; Shootout ★</span>
+                <h1 className="hl-sign__title">O.K. Corral</h1>
+              </div>
             </div>
-            {error && (
-              <div style={{ ...S.mono, color: '#ff7272', marginTop: 12, fontWeight: 'bold' }}>⚠ {error}</div>
-            )}
+            <div className="hl-tagline">Draw yer irons — the Marshal's called a reckonin'</div>
+            {error && <div className="hl-error">⚠ {error}</div>}
           </div>
 
-          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-            <div style={{ ...S.paper, padding: '14px 18px', transform: 'rotate(-1.5deg)', minWidth: 190 }}>
-              <div style={{ ...S.mono, fontSize: 10, letterSpacing: 3, color: '#6b4423', fontWeight: 'bold', textAlign: 'center' }}>
-                ROOM CODE
-              </div>
-              <div
-                style={{
-                  ...S.title,
-                  fontSize: 58,
-                  color: '#3e2417',
-                  textAlign: 'center',
-                  marginTop: 4,
-                  letterSpacing: 6,
-                  textShadow: '0 2px 0 rgba(100,60,20,0.3)',
-                }}
-              >
-                {roomCode}
-              </div>
-              <div style={{ ...S.mono, fontSize: 10, color: '#6b4423', textAlign: 'center', opacity: 0.7 }}>
-                {window.location.host}
-              </div>
+          {hasSessionGames(gameState?.session) && (
+            <SessionScore session={gameState!.session!} className="hl-session" />
+          )}
+
+          <div className="hl-join">
+            <div className="hl-code">
+              <div className="hl-code__label">Room code</div>
+              <div className="hl-code__value">{roomCode}</div>
+              <div className="hl-code__host">join at {window.location.host}</div>
             </div>
             {qrCodeUrl && (
-              <div style={{ ...S.paper, padding: 10, transform: 'rotate(1deg)' }}>
-                <img src={qrCodeUrl} alt="Join QR Code" style={{ width: 130, height: 130, display: 'block' }} />
-                <div style={{ ...S.mono, fontSize: 9, color: '#3e2417', textAlign: 'center', marginTop: 4, letterSpacing: 2 }}>
-                  SCAN TO RIDE IN
-                </div>
+              <div className="hl-qr">
+                <img src={qrCodeUrl} alt="QR code to join this room" />
+                <div className="hl-qr__label">Scan to ride in</div>
               </div>
             )}
           </div>
         </header>
 
-        {/* Teams */}
-        <main className="lobby-teams" style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, minHeight: 400 }}>
-          <TeamPanel team="sheriffs" players={sheriffs} max={localConfig.slotsPerSide} />
-          <TeamPanel team="outlaws" players={outlaws} max={localConfig.slotsPerSide} />
+        {/* Teams + rules */}
+        <main className="hl-grid">
+          <TeamPanel team="sheriffs" players={sheriffs} max={slotsPerSide} />
+          <HowToPlay roundSeconds={roundSeconds} />
+          <TeamPanel team="outlaws" players={outlaws} max={slotsPerSide} />
         </main>
 
         {/* Unassigned */}
         {unassigned.length > 0 && (
-          <div
-            style={{
-              ...S.wood,
-              padding: '10px 16px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 10,
-              alignItems: 'center',
-            }}
-          >
-            <span style={{ ...S.mono, color: '#e0b04a', fontSize: 11, letterSpacing: 2, fontWeight: 'bold' }}>IN THE SALOON:</span>
+          <div className="hl-saloon">
+            <span className="hl-saloon__label">In the saloon, picking a side:</span>
             {unassigned.map((p) => (
-              <span
-                key={p.id}
-                style={{
-                  ...S.mono,
-                  fontSize: 11,
-                  color: '#f4e9d6',
-                  background: 'rgba(107,68,35,0.4)',
-                  padding: '4px 10px',
-                  borderRadius: 3,
-                  border: '1px solid #6b4423',
-                }}
-              >
-                🤠 {p.name}
-              </span>
+              <span key={p.id} className="hl-saloon__chip">🤠 {p.name}</span>
             ))}
           </div>
         )}
 
-        {/* Footer */}
-        <footer style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ ...S.mono, fontSize: 12, color: '#d9cbb0', opacity: 0.8 }}>
-            <span style={{ color: '#e0b04a' }}>⚙</span> &nbsp;Round: {(localConfig.tickDuration / 1000).toFixed(1)}s &nbsp;·&nbsp; Slots per side: {localConfig.slotsPerSide}
+        {/* Call to action */}
+        <footer className={`hl-cta ${canStart ? 'hl-cta--ready' : 'hl-cta--waiting'}`}>
+          <div className="hl-cta__icon" aria-hidden="true">
+            {canStart ? <Smartphone /> : <Hourglass />}
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <WesternBtn onClick={() => setShowSettings(true)}>⚙ Settings</WesternBtn>
+          <div className="hl-cta__copy" role="status" aria-live="polite">
             {canStart ? (
-              <WesternBtn primary big onClick={() => socket.emit('startGame')}>▶ Start the Showdown</WesternBtn>
+              <>
+                <div className="hl-cta__headline">Ready to ride!</div>
+                <div className="hl-cta__detail">
+                  Any player can press <b>START</b> on their phone
+                </div>
+              </>
             ) : (
-              <div
-                style={{
-                  ...S.mono,
-                  fontSize: 13,
-                  color: '#e0b04a',
-                  padding: '12px 20px',
-                  border: '1px dashed #6b4423',
-                  borderRadius: 4,
-                  opacity: 0.85,
-                }}
-              >
-                Waitin' on more cowpokes…
-              </div>
+              <>
+                <div className="hl-cta__headline">Waiting for both teams…</div>
+                <div className="hl-cta__detail">
+                  {missing.join(' & ')} {missing.length > 1 ? 'need' : 'needs'} at least one gunslinger — scan the code or add a bot
+                </div>
+              </>
             )}
+          </div>
+          <div className="hl-cta__actions">
+            <div className="hl-cta__config">
+              ⚙ {roundSeconds}s rounds · {slotsPerSide} per side
+            </div>
+            <WesternBtn onClick={() => setShowSettings(true)}>⚙ Settings</WesternBtn>
+            <WesternBtn primary big disabled={!canStart} onClick={() => socket.emit('startGame')}>
+              ▶ Start the Showdown
+            </WesternBtn>
           </div>
         </footer>
       </div>
@@ -200,97 +171,97 @@ export default function Lobby({ roomCode, gameState, error }: LobbyProps) {
   );
 }
 
-function TeamPanel({ team, players, max }: { team: Team; players: Player[]; max: number }) {
-  const isSheriff = team === 'sheriffs';
-  const main = isSheriff ? '#83c6c2' : '#ee987b';
-  const dark = isSheriff ? '#254c59' : '#613d36';
+// Slow-drifting dust motes. Positions are deterministic so re-renders don't jump.
+function Dust() {
   return (
-    <div
-      style={{
-        ...S.wood,
-        border: `2px solid ${main}`,
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      <div className="lobby-layout"
-        style={{
-          padding: '14px 20px',
-          borderBottom: `1px solid ${dark}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 14,
-          background: `linear-gradient(180deg, ${dark} 0%, transparent 100%)`,
-        }}
-      >
-        {isSheriff ? <StarEmblem size={40} /> : <SkullEmblem size={40} />}
-        <div>
-          <div style={{ ...S.title, color: main, fontSize: 26, letterSpacing: 2 }}>
-            {isSheriff ? 'SHERIFFS' : 'OUTLAWS'}
-          </div>
-          <div style={{ ...S.mono, fontSize: 10, color: '#d9cbb0', opacity: 0.7, letterSpacing: 2 }}>
-            {isSheriff ? 'LAW OF THE LAND' : 'DEAD OR ALIVE'}
-          </div>
-        </div>
-        <div style={{ ...S.mono, marginLeft: 'auto', fontSize: 28, color: '#e0b04a', fontWeight: 'bold' }}>
-          {players.length}
-          <span style={{ opacity: 0.4, fontSize: 18 }}>/{max}</span>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {Array.from({ length: max }).map((_, i) => {
-          const p = players.find((pl) => pl.slot === i);
-          return <SlotRow key={i} slot={i} player={p} team={team} />;
-        })}
-      </div>
+    <div className="hx-dust" aria-hidden="true">
+      {Array.from({ length: 18 }).map((_, i) => (
+        <span
+          key={i}
+          style={{
+            top: `${(i * 37) % 100}%`,
+            left: `${(i * 53) % 100}%`,
+            width: 2 + (i % 4),
+            height: 2 + (i % 4),
+            animationDuration: `${18 + (i % 7) * 4}s`,
+            animationDelay: `${-(i * 2.3)}s`,
+          }}
+        />
+      ))}
     </div>
   );
 }
 
-function SlotRow({ slot, player, team }: { slot: number; player: Player | undefined; team: Team }) {
+function TeamPanel({ team, players, max }: { team: Team; players: Player[]; max: number }) {
   const isSheriff = team === 'sheriffs';
-  const main = isSheriff ? '#83c6c2' : '#ee987b';
+  const full = players.length >= max;
+  const bots = players.filter((p) => p.isBot).length;
+  return (
+    <section className={`hl-team hl-team--${team}`} aria-label={isSheriff ? 'Sheriffs' : 'Outlaws'}>
+      <div className="hl-team__head">
+        {isSheriff ? <StarEmblem size={48} /> : <SkullEmblem size={48} />}
+        <div>
+          <div className="hl-team__name">{isSheriff ? 'SHERIFFS' : 'OUTLAWS'}</div>
+          <div className="hl-team__motto">{isSheriff ? 'Law of the land · left side' : 'Dead or alive · right side'}</div>
+        </div>
+        <div className="hl-team__count">
+          {players.length}
+          <span>/{max}</span>
+        </div>
+      </div>
+
+      <div className="hl-team__slots">
+        {Array.from({ length: max }).map((_, i) => {
+          const p = players.find((pl) => pl.slot === i);
+          return <SlotRow key={i} slot={i} player={p} />;
+        })}
+      </div>
+
+      <div className="hl-team__bots">
+        <div className="hl-team__bot-btns">
+          <button
+            type="button"
+            className="hl-botbtn"
+            disabled={full}
+            onClick={() => socket.emit('addBot', team)}
+            title={full ? 'Team is full' : `Add a bot to the ${isSheriff ? 'Sheriffs' : 'Outlaws'}`}
+          >
+            <UserPlus aria-hidden="true" /> Add bot
+          </button>
+          <button
+            type="button"
+            className="hl-botbtn"
+            disabled={bots === 0}
+            onClick={() => socket.emit('removeBot', team)}
+            title={bots === 0 ? 'No bots on this team' : 'Remove the last bot'}
+          >
+            <UserMinus aria-hidden="true" /> Remove bot
+          </button>
+        </div>
+        <div className="hl-team__bot-hint">
+          <Bot aria-hidden="true" /> Short on gunslingers? Bots fill seats.
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SlotRow({ slot, player }: { slot: number; player: Player | undefined }) {
   if (!player) {
     return (
-      <div className="lobby-layout"
-        style={{
-          ...S.mono,
-          height: 48,
-          border: `1.5px dashed rgba(${isSheriff ? '138,179,222' : '222,138,138'},0.25)`,
-          borderRadius: 4,
-          display: 'flex',
-          alignItems: 'center',
-          paddingLeft: 16,
-          fontSize: 11,
-          color: 'rgba(217,203,176,0.4)',
-          letterSpacing: 2,
-        }}
-      >
-        SLOT {slot + 1} · EMPTY
+      <div className="hl-slot hl-slot--empty">
+        <span className="hl-slot__num">{slot + 1}</span>
+        <span>Empty seat</span>
       </div>
     );
   }
   return (
-    <div
-      style={{
-        height: 48,
-        background: 'rgba(30,15,6,0.7)',
-        border: `1px solid ${main}`,
-        borderLeft: `4px solid ${main}`,
-        borderRadius: 4,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '0 14px',
-      }}
-    >
-      <MiniCowboy team={team} size={32} />
-      <div style={{ ...S.serif, color: '#f4e9d6', fontSize: 18, letterSpacing: 1, flex: 1 }}>{player.name}</div>
-      <div style={{ ...S.mono, fontSize: 9, color: 'rgba(217,203,176,0.55)', letterSpacing: 2 }}>SLOT {slot + 1}</div>
-      <div style={{ width: 8, height: 8, borderRadius: '50%', background: main, boxShadow: `0 0 8px ${main}` }} />
+    <div className="hl-slot hl-slot--taken">
+      <span className="hl-slot__num">{slot + 1}</span>
+      <PlayerAvatar player={player} className="hl-slot__avatar" />
+      <span className="hl-slot__name">{player.name}</span>
+      {player.isBot && <BotBadge />}
+      <span className="hl-slot__dot" aria-hidden="true" />
     </div>
   );
 }

@@ -2,7 +2,6 @@
 
 A real-time, western-themed multiplayer shootout game where Sheriffs and Outlaws face off in a tactical grid battle. Built with React, Socket.io, and Tailwind CSS.
 
-![Game Screenshot](/Users/jonas/.gemini/antigravity/brain/ad2fe259-2228-45d4-af38-feafffb389ca/arena_polished_1770481732032.png)
 
 ## 🚀 How to Run
 
@@ -78,11 +77,23 @@ The game is played in simultaneous turns.
 - `/server`: socket.io logic (`rooms.ts`, `actions.ts`).
 - `/shared`: Shared TypeScript types.
 
+## What's on screen
+
+- **Readable showdown**: each resolution plays as *reveal → move → volley → impact*. Every player's chosen action pops up above their head, dashed aim lines show exactly which lane each gun points at, then bullets fly.
+- **Cover is obvious**: a covering player crouches *behind* their barrel (hat peeking out), the barrel glows in team colour and their plate reads `⛨ IN COVER`. Covering behind a broken barrel shows `⚠ NO COVER`.
+- **Plates** on the outer edges show name, hearts and bullets; `READY` appears once a player has locked in. Barrels show their remaining strength as notches.
+- **Drama**: hit-stop and screen shake on hits, hats fly on kills, round headlines (CLANG!, DOUBLE KILL, LAST ONE STANDING…), and a slow-motion zoom on the match-ending shot.
+- **Sound**: synthesized western score that intensifies as players fall, stereo-panned gunshots with canyon echo, ricochets, splinters, spurs, cylinder spins, 3‑2‑1 countdown ticks.
+- **Phones**: lane mini-map, aim preview for every shot, threat warning, per-round recap, haptics; dead players spectate and send emotes to the TV.
+- **Lobby/End**: add bots to fill seats, how-to-play card, MVP, awards and a per-player recap; a session score carries across "Play again".
+
+Rules are unchanged; bots, stats, emotes and the session score are presentation only.
+
 ## Presentation and synchronization
 
 The host and phones use a clock offset estimated from server replies. Action requests include the round number and its start timestamp, and the server acknowledges the confirmed choice. Reconnecting clients rejoin with their existing identity. State revisions prevent older messages from replacing newer rounds.
 
-Resolution uses a shared server timestamp: movement at 0–420 ms, volley at 420 ms, impacts and health reveal at 840 ms. This is presentation only; the existing combat resolver and planning/resolution durations are preserved.
+Resolution uses a shared server timestamp: action reveal at 0 ms, movement 450–850 ms, volley at 850 ms, impacts and health reveal at 1250 ms; the next round starts 2.6 s after resolution (3.6 s for the final volley). This is presentation only: the combat resolver and the planning duration are unchanged; only the pause for animations between rounds grew.
 
 The phone controller supports W/S to move, A for cover, R to reload, Q/E for diagonal shots, and Space for a straight shot. Sound and reduced-motion controls are available in the bottom corner.
 

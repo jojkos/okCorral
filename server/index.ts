@@ -1,13 +1,14 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { RoomManager } from "./rooms.js";
+import { RoomManager, publicState } from "./rooms.js";
 import {
   JoinRoomSchema,
   SelectTeamSchema,
   LockActionSchema,
   GameConfigSchema,
 } from "../shared/validation.js";
+import { EMOTES } from "../shared/types.js";
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -120,7 +121,7 @@ io.on("connection", (socket) => {
         socket.join(roomCode);
         roomManager.noteSocketJoined(roomCode, socket.id);
         if (result.state) {
-          socket.emit("gameState", result.state);
+          socket.emit("gameState", publicState(result.state));
         }
         roomManager.broadcastState(roomCode);
       } else {
@@ -242,6 +243,28 @@ io.on("connection", (socket) => {
     socket.leave(roomCode);
     roomManager.noteSocketLeft(roomCode, socket.id);
     socket.data.roomCode = undefined;
+  });
+
+  socket.on("emote", (emoji) => {
+    const playerId = socket.data.playerId as string | undefined;
+    const roomCode = socketRoom(socket);
+    if (!playerId || !roomCode || !(EMOTES as readonly string[]).includes(emoji)) return;
+    roomManager.emote(roomCode, playerId, emoji);
+  });
+
+  // Host or any player can seat/unseat bots while in the lobby.
+  socket.on("addBot", (team) => {
+    const parsed = SelectTeamSchema.safeParse(team);
+    const roomCode = socketRoom(socket);
+    if (!parsed.success || !roomCode) return;
+    const result = roomManager.addBot(roomCode, parsed.data);
+    if (!result.success) socket.emit("error", result.error || "Cannot add bot");
+  });
+  socket.on("removeBot", (team) => {
+    const parsed = SelectTeamSchema.safeParse(team);
+    const roomCode = socketRoom(socket);
+    if (!parsed.success || !roomCode) return;
+    roomManager.removeBot(roomCode, parsed.data);
   });
 
   // Host updates config

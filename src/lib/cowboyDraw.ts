@@ -80,7 +80,7 @@ export function drawRevolver(ctx: CanvasRenderingContext2D, x: number, y: number
 }
 
 // Articulated vector character. Poses are presentation-only.
-export interface CowboyPose { walk?: number; recoil?: number; reload?: number; cover?: number }
+export interface CowboyPose { walk?: number; recoil?: number; reload?: number; cover?: number; hat?: boolean }
 export function drawCowboy(ctx: CanvasRenderingContext2D, team: Team, facing: 1 | -1, time: number, seed = 0, pose: CowboyPose = {}) {
   const law = team === 'sheriffs';
   const coat = law ? COL.sheriff : COL.outlaw;
@@ -127,13 +127,26 @@ export function drawCowboy(ctx: CanvasRenderingContext2D, team: Team, facing: 1 
   else {path([[-11,-25],[11,-24],[10,-15],[-9,-15]],'#332a2b');ctx.fillStyle='#d19576';ctx.fillRect(4,-25,5,2);}
   path([[-10,-16],[10,-15],[3,-8],[-9,-10]],light);
   path([[-8,-12],[-13,-7],[-9,6],[-4,-7]],coat);
-  // Broad curved brim, shaped crown, leather band, warm rim light.
+  if (pose.hat !== false) drawHatShape(ctx, law);
+  if(law)drawStar(ctx,-12,0,6,2.8,COL.goldBright);
+  else {ctx.strokeStyle='#f2d3a8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-15,-2);ctx.lineTo(-7,5);ctx.moveTo(-7,-2);ctx.lineTo(-15,5);ctx.stroke();}
+  ctx.restore();
+}
+
+// Broad curved brim, shaped crown, leather band, warm rim light. Drawn in the
+// cowboy's local space (brim centre at y = -42).
+function drawHatShape(ctx: CanvasRenderingContext2D, law: boolean) {
+  const path = (points: number[][], fill: string) => {
+    ctx.fillStyle = fill; ctx.beginPath(); points.forEach(([x,y], i) => i ? ctx.lineTo(x,y) : ctx.moveTo(x,y)); ctx.closePath(); ctx.fill();
+  };
   ctx.fillStyle=law?'#ad8253':'#313338';ctx.beginPath();ctx.ellipse(0,-42,29,6,-.08,0,Math.PI*2);ctx.fill();
   path([[-17,-43],[-14,-61],[-5,-65],[2,-60],[10,-64],[17,-44]],law?'#c29964':'#464449');
   path([[-14,-60],[-5,-64],[-3,-45],[-17,-44]],law?'#967044':'#252e34');
   ctx.fillStyle=law?'#654a36':'#af674a';ctx.fillRect(-16,-47,33,5);
   ctx.strokeStyle=law?'#ecd09a':'#b6a08c';ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(0,-42,29,6,-.08,0,Math.PI);ctx.stroke();
-  if(law)drawStar(ctx,-12,0,6,2.8,COL.goldBright);
-  else {ctx.strokeStyle='#f2d3a8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-15,-2);ctx.lineTo(-7,5);ctx.moveTo(-7,-2);ctx.lineTo(-15,5);ctx.stroke();}
-  ctx.restore();
+}
+
+// A loose hat (e.g. knocked off by a killing shot), centred on its brim.
+export function drawHat(ctx: CanvasRenderingContext2D, team: Team) {
+  ctx.save(); ctx.translate(0, 42); drawHatShape(ctx, team === 'sheriffs'); ctx.restore();
 }

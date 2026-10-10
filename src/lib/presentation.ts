@@ -1,7 +1,13 @@
 import type { GameState } from '../../shared/types';
 
 // Presentation only. The server's rules and round durations are unchanged.
-export const VOLLEY = { move: 420, impact: 840, settle: 1450 };
+// Resolution timeline (ms after resolutionStartedAt), shared by host + phones:
+//   0 → reveal   every player's chosen action pops up, aim lines appear
+//   reveal → move   movers slide to their new lane
+//   move         the volley fires (ammo spent)
+//   impact       bullets land; health and barrels update
+//   settle       callouts fade; server starts next round at RESOLUTION_MS
+export const VOLLEY = { reveal: 450, move: 850, impact: 1250, settle: 2100 };
 export const estimateOffset = (sent: number, received: number, server: number) => server - (sent + received) / 2;
 export function presentState(state: GameState, now: number): GameState {
   const before = state.resolutionFrom;

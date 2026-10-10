@@ -179,6 +179,7 @@ export function resolveActions(state: GameState): ActionResult {
           toSlot: sBullet.targetSlot,
           trajectory: sBullet.trajectory,
           hit: "bullet",
+          shooterId: sBullet.shooter.id,
         });
         bullets.push({
           id: oBullet.id,
@@ -187,6 +188,7 @@ export function resolveActions(state: GameState): ActionResult {
           toSlot: oBullet.targetSlot,
           trajectory: oBullet.trajectory,
           hit: "bullet",
+          shooterId: oBullet.shooter.id,
         });
       }
     });
@@ -211,6 +213,7 @@ export function resolveActions(state: GameState): ActionResult {
         toSlot: bullet.targetSlot,
         trajectory: bullet.trajectory,
         hit: "miss",
+        shooterId: bullet.shooter.id,
       });
       return;
     }
@@ -230,9 +233,12 @@ export function resolveActions(state: GameState): ActionResult {
         toSlot: bullet.targetSlot,
         trajectory: bullet.trajectory,
         hit: "barrel",
+        shooterId: bullet.shooter.id,
+        targetId: targetPlayer.id,
       });
     } else {
       // Hit player
+      const wasAlive = targetPlayer.hp > 0;
       targetPlayer.hp--;
       if (targetPlayer.hp <= 0) {
         targetPlayer.isAlive = false;
@@ -244,6 +250,9 @@ export function resolveActions(state: GameState): ActionResult {
         toSlot: bullet.targetSlot,
         trajectory: bullet.trajectory,
         hit: "player",
+        shooterId: bullet.shooter.id,
+        targetId: targetPlayer.id,
+        lethal: wasAlive && targetPlayer.hp <= 0,
       });
     }
   });

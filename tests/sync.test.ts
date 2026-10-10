@@ -39,7 +39,10 @@ test('rejoining keeps player identity, position and confirmed choice', () => {
     manager.broadcastState(room);
     const state = states.at(-1)!;
     assert.equal(state.players.length, 2);
-    assert.equal(state.players.find(p=>p.id==='a')!.currentAction, 'COVER');
+    // Broadcasts hide the choice during planning; the ack still returns it to its owner.
+    assert.equal(state.players.find(p=>p.id==='a')!.actionLocked, true);
+    assert.equal(state.players.find(p=>p.id==='a')!.currentAction, 'NONE');
+    assert.equal(manager.submitAction('a', room, 'RELOAD', state.tick, state.tickStartTime!).action, 'COVER');
   } finally { manager.endSession(room); }
 });
 test('damage and ammo reveal on the shared timeline without changing the authoritative result', () => {

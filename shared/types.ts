@@ -31,6 +31,34 @@ export interface Player {
   actionLocked: boolean;
   currentAction: ActionType;
   isCovered: boolean;
+  // Presentation/meta only — never read by the combat resolver.
+  isBot?: boolean;
+  stats?: PlayerStats;
+}
+
+// Per-match tallies for the end-screen awards. Reset on game start.
+export interface PlayerStats {
+  shots: number;
+  hits: number; // bullets that damaged a player
+  barrelHits: number; // bullets that struck an enemy barrel
+  misses: number;
+  clashes: number; // bullets destroyed mid-air
+  kills: number;
+  damageTaken: number;
+  blocked: number; // enemy bullets absorbed by own barrel
+  covers: number;
+  reloads: number;
+  moves: number;
+  diedOnTick: number | null;
+}
+
+export const EMOTES = ["🤠", "😂", "😱", "💀", "🔥", "👋", "🎯", "🐔"] as const;
+export type Emote = (typeof EMOTES)[number];
+
+export interface SessionScore {
+  sheriffs: number;
+  outlaws: number;
+  draws: number;
 }
 
 // Barrel state
@@ -48,6 +76,9 @@ export interface Bullet {
   toSlot: number;
   trajectory: "straight" | "up" | "down";
   hit: "player" | "barrel" | "bullet" | "miss";
+  shooterId?: string;
+  targetId?: string; // player hit, or owner of the barrel that was hit
+  lethal?: boolean; // this bullet took the target's last heart
 }
 
 // Game configuration
@@ -71,6 +102,7 @@ export interface GameState {
   tickStartTime: number | null;
   pendingActions: { playerId: string; action: ActionType }[];
   lastTickBullets: Bullet[];
+  session?: SessionScore;
 }
 
 // Client-side player info (what the client receives about itself)
@@ -102,6 +134,7 @@ export interface ServerToClientEvents {
     state: GameState;
   }) => void;
   gameEnded: (data: { winner: Team | "draw" }) => void;
+  emote: (data: { playerId: string; emoji: Emote }) => void;
 }
 
 // Socket events from client to server
@@ -120,4 +153,7 @@ export interface ClientToServerEvents {
   endSession: () => void;
   leaveRoom: () => void;
   updateConfig: (config: Partial<GameConfig>) => void;
+  emote: (emoji: Emote) => void;
+  addBot: (team: Team) => void;
+  removeBot: (team: Team) => void;
 }

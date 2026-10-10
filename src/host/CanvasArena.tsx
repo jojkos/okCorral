@@ -1,166 +1,57 @@
 import { useEffect, useRef } from 'react';
-import type { GameState, Player, Barrel, Bullet, Team } from '../../shared/types';
-import { serverNow } from '../socket';
+import type { Bullet, GameState, Player, Team, Emote } from '../../shared/types';
+import { socket, serverNow } from '../socket';
 import { VOLLEY } from '../lib/presentation';
+import { roundHeadline } from '../lib/recap';
 import { reducedMotion } from '../components/GamePreferences';
-import { playGunshot, playBulletImpact, playTickStart, playTickResolve } from '../sound';
-import { COL, roundRect, drawStar, drawCowboy } from '../lib/cowboyDraw';
+import * as sound from '../sound';
+import { CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, barrelX, clamp01, facingOf, gunHeight, rand, slotLayout, teamX } from './arena/layout';
+import { drawBackground, drawBarrel, drawLanes, drawVignette } from './arena/scene';
+import { ActorAnim, ActorFrame, actorFrame, drawActionBadge, drawActor, drawIntentMarker, drawPlate, headY } from './arena/actors';
+import { Banner, BulletAnim, EmoteFx, Floater, FlyingHat, Impact, Muzzle, ParticleSystem, drawBanners, drawBullets, drawEmotes, drawFloaters, drawHats, drawImpacts, drawMuzzles, stepHats } from './arena/fx';
+import { drawCountdown, drawHUD, drawLegend } from './arena/hud';
 
-interface CanvasArenaProps {
-  gameState: GameState;
-}
+// Sound is upgraded independently; call optional cues defensively.
+const sfx = sound as unknown as Record<string, ((...args: unknown[]) => void) | undefined>;
+const cue = (name: string, ...args: unknown[]) => { try { sfx[name]?.(...args); } catch { /* audio is best-effort */ } };
+const pan = (team: Team) => (team === 'sheriffs' ? -0.65 : 0.65);
 
-const CANVAS_W = 1600;
-const CANVAS_H = 900;
-
-function rand(seed: number) {
-  let t = seed + 0x6d2b79f5;
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-}
-const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-const easeInOutQuad = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
-
-interface Layout {
-  ys: number[];
-  slotHeight: number;
-  sheriffX: number;
-  sheriffBarrel: number;
-  outlawBarrel: number;
-  outlawX: number;
-  midX: number;
-}
-
-function slotLayout(slotsPerSide: number): Layout {
-  const top = 185;
-  const bottom = 820;
-  const slotHeight = (bottom - top) / slotsPerSide;
-  const ys = Array.from({ length: slotsPerSide }, (_, i) => top + slotHeight * (i + 0.5));
-  return {
-    ys,
-    slotHeight,
-    sheriffX: 320,
-    sheriffBarrel: 560,
-    outlawBarrel: 1040,
-    outlawX: 1280,
-    midX: 800,
-  };
-}
-
-type ParticleKind = 'dot' | 'square' | 'streak';
-interface Particle {
-  kind?: ParticleKind;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  drag?: number;
-  gravity?: number;
-  size: number;
-  rot?: number;
-  life: number;
-  age: number;
-  color: string;
-  fade?: boolean;
-}
-
-const PARTICLE_CAP = 800;
-class ParticleSystem {
-  parts: Particle[] = [];
-  add(p: Particle) {
-    if (this.parts.length >= PARTICLE_CAP) this.parts.shift();
-    this.parts.push(p);
-  }
-  step(dt: number) {
-    for (const p of this.parts) {
-      p.age += dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vx *= 1 - (p.drag ?? 1.5) * dt;
-      p.vy *= 1 - (p.drag ?? 1.5) * dt;
-      p.vy += (p.gravity ?? 0) * dt;
-    }
-    this.parts = this.parts.filter((p) => p.age < p.life);
-  }
-  draw(ctx: CanvasRenderingContext2D) {
-    for (const p of this.parts) {
-      const life = p.age / p.life;
-      const alpha = p.fade ? 1 - life : 1;
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = p.color;
-      if (p.kind === 'square') {
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot ?? 0);
-        const s = p.size * (1 - life * 0.3);
-        ctx.fillRect(-s / 2, -s / 2, s, s);
-        ctx.restore();
-      } else if (p.kind === 'streak') {
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = p.size * (1 - life);
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(p.x - p.vx * 0.04, p.y - p.vy * 0.04);
-        ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * (1 - life * 0.4), 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    ctx.globalAlpha = 1;
-  }
-}
-
-interface PlayerAnim {
-  slideFrom?: number;
-  slideTo?: number;
-  slideStart?: number;
-  flinchAt?: number;
-  deathAt?: number;
-  cover?: number;
-}
-interface Muzzle { x: number; y: number; t: number; life: number; dir: number }
-interface BulletAnim { id: string; fromX: number; fromY: number; toX: number; toY: number; bornAt: number; dur: number; team: Team; hit: Bullet['hit'] }
-interface Impact { x: number; y: number; t: number; kind: 'player' | 'barrel' | 'bullet'; team: Team }
-interface DamageNum { x: number; y: number; text: string; t: number; color: string }
-interface DustMote { x: number; y: number; r: number; vx: number; vy: number; a: number }
+interface CanvasArenaProps { gameState: GameState }
 
 interface AnimState {
   particles: ParticleSystem;
   bullets: BulletAnim[];
   muzzles: Muzzle[];
   impacts: Impact[];
-  damages: DamageNum[];
+  floaters: Floater[];
+  banners: Banner[];
+  hats: FlyingHat[];
+  emotes: EmoteFx[];
   shake: { x: number; y: number; mag: number; until: number };
   flash: number;
+  /** Animation clock (seconds), slowed by hit-stop / slow-mo. */
   t: number;
-  playerAnim: Record<string, PlayerAnim>;
-  ambient: DustMote[];
+  slowUntil: number;
+  slowScale: number;
+  cam: { zoom: number; x: number; y: number; tz: number; tx: number; ty: number };
+  anims: Record<string, ActorAnim>;
+  frames: Record<string, ActorFrame>;
   timeLeft: number;
+  lastCountdown: number;
+  finalAt: number | null;
 }
 
 export default function CanvasArena({ gameState }: CanvasArenaProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bgRef = useRef<HTMLImageElement | null>(null);
-  const animRef = useRef<number | null>(null);
   const gsRef = useRef<GameState>(gameState);
-  const stateRef = useRef<AnimState>({
-    particles: new ParticleSystem(),
-    bullets: [],
-    muzzles: [],
-    impacts: [],
-    damages: [],
-    shake: { x: 0, y: 0, mag: 0, until: 0 },
-    flash: 0,
-    t: 0,
-    playerAnim: {},
-    ambient: [],
-    timeLeft: 0,
+  const stRef = useRef<AnimState>({
+    particles: new ParticleSystem(), bullets: [], muzzles: [], impacts: [], floaters: [], banners: [], hats: [], emotes: [],
+    shake: { x: 0, y: 0, mag: 0, until: 0 }, flash: 0, t: 0, slowUntil: 0, slowScale: 1,
+    cam: { zoom: 1, x: CANVAS_W / 2, y: CANVAS_H / 2, tz: 1, tx: CANVAS_W / 2, ty: CANVAS_H / 2 },
+    anims: {}, frames: {}, timeLeft: 0, lastCountdown: 0, finalAt: null,
   });
-
-  useEffect(() => { gsRef.current = gameState; }, [gameState]);
+  gsRef.current = gameState;
 
   useEffect(() => {
     const img = new Image();
@@ -168,140 +59,253 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
     img.onload = () => { bgRef.current = img; };
   }, []);
 
+  // Flinch / death reactions follow the *presented* state, so they land on impact.
+  const prevRef = useRef<Record<string, { hp: number; isAlive: boolean }>>({});
   useEffect(() => {
-    const st = stateRef.current;
-    for (let i = 0; i < 60; i++) {
-      st.ambient.push({
-        x: rand(i * 17) * CANVAS_W,
-        y: rand(i * 31) * CANVAS_H,
-        r: 0.5 + rand(i * 7) * 2,
-        vx: (rand(i * 3) - 0.5) * 8,
-        vy: -2 - rand(i * 5) * 6,
-        a: 0.1 + rand(i * 11) * 0.3,
-      });
-    }
-  }, []);
-
-  const prevPlayersRef = useRef<Record<string, { slot: number; hp: number; isAlive: boolean }>>({});
-  useEffect(() => {
-    const prev = prevPlayersRef.current;
+    const st = stRef.current;
+    const prev = prevRef.current;
     const next: typeof prev = {};
-    const st = stateRef.current;
+    const L = slotLayout(gameState.config.slotsPerSide);
     for (const p of gameState.players) {
       const last = prev[p.id];
-      if (last && last.slot !== p.slot) {
-        st.playerAnim[p.id] = {
-          ...(st.playerAnim[p.id] || {}),
-          slideFrom: last.slot,
-          slideTo: p.slot,
-          slideStart: st.t,
-        };
-      }
-      if (last && last.hp > p.hp) {
-        st.playerAnim[p.id] = { ...(st.playerAnim[p.id] || {}), flinchAt: st.t };
-      }
+      const a = (st.anims[p.id] ||= {});
+      if (last && last.hp > p.hp && p.isAlive) a.flinchAt = st.t;
       if (last && last.isAlive && !p.isAlive) {
-        st.playerAnim[p.id] = { ...(st.playerAnim[p.id] || {}), deathAt: st.t };
+        a.deathAt = st.t;
+        a.deathDur = st.finalAt != null ? 1.4 : 0.75;
+        a.flinchAt = st.t;
+        const f = st.frames[p.id];
+        if (f && !reducedMotion()) {
+          a.hatGone = true;
+          const dir = -facingOf(p.team);
+          st.hats.push({ x: f.x, y: headY(L, f) + 20 * L.s, vx: dir * (50 + Math.random() * 70), vy: -480 - Math.random() * 160, rot: 0, vr: dir * (8 + Math.random() * 6), ground: f.feet - 6, team: p.team, s: L.s, landed: false });
+        }
       }
-      next[p.id] = { slot: p.slot, hp: p.hp, isAlive: p.isAlive };
+      if (!last || (last.isAlive === false && p.isAlive)) { a.deathAt = undefined; a.hatGone = false; }
+      next[p.id] = { hp: p.hp, isAlive: p.isAlive };
     }
-    prevPlayersRef.current = next;
+    prevRef.current = next;
   }, [gameState.players]);
 
+  // Music gets more intense as the posse thins out.
   useEffect(() => {
-    const st = stateRef.current;
-    if (gameState.phase === 'planning') { playTickStart(); return; }
-    if (gameState.phase !== 'resolution' || !gameState.resolutionStartedAt) return;
-    const elapsed = serverNow() - gameState.resolutionStartedAt;
-    if (elapsed > VOLLEY.settle) return;
-    playTickResolve();
-    const L = slotLayout(gameState.config.slotsPerSide);
-    const scheduled: ReturnType<typeof setTimeout>[] = [];
-    for (const b of gameState.lastTickBullets) {
-      const right = b.fromTeam === 'sheriffs';
-      const fromX = right ? L.sheriffX + 60 : L.outlawX - 60;
-      const fromY = L.ys[b.fromSlot];
-      let toX = right ? L.outlawX : L.sheriffX;
-      let toY = L.ys[b.toSlot];
-      if (b.hit === 'bullet') { toX = L.midX; toY = (fromY + toY) / 2; }
-      if (b.hit === 'barrel') toX = right ? L.outlawBarrel : L.sheriffBarrel;
-      if (b.hit === 'miss') toX = right ? 1510 : 90;
-      const launch = () => {
-        if (elapsed >= VOLLEY.impact) return;
-        playGunshot();
-        const overdue = Math.max(0, elapsed - VOLLEY.move) / 1000;
-        st.muzzles.push({ x: fromX, y: fromY, t: st.t - overdue, life: .11, dir: right ? 1 : -1 });
-        st.bullets.push({ id: b.id, fromX, fromY, toX, toY, bornAt: st.t - overdue,
-          dur: (VOLLEY.impact - VOLLEY.move) / 1000, team: b.fromTeam, hit: b.hit });
-        for (let i = 0; i < 6; i++) st.particles.add({ x: fromX, y: fromY, vx: (right?1:-1)*(30+Math.random()*60), vy:-20-Math.random()*30, size:4+Math.random()*4, life:.6, age:0, color:'#c8baa0', fade:true });
-      };
-      if (elapsed < VOLLEY.move) scheduled.push(setTimeout(launch, VOLLEY.move-elapsed)); else launch();
-      if (elapsed < VOLLEY.impact) scheduled.push(setTimeout(() => {
-        playBulletImpact(b.hit);
+    const seated = gameState.players.filter((p) => p.slot >= 0);
+    if (!seated.length) return;
+    const alive = (team: Team) => seated.filter((p) => p.team === team && p.isAlive).length;
+    let level = 1 - seated.filter((p) => p.isAlive).length / seated.length;
+    if (alive('sheriffs') === 1 || alive('outlaws') === 1) level = Math.max(level, 0.8);
+    cue('setMusicIntensity', Math.min(1, level + 0.15));
+  }, [gameState.players]);
+
+  // New round → stamp banner + "draw!" cue.
+  useEffect(() => {
+    if (gameState.phase !== 'planning') return;
+    const st = stRef.current;
+    st.lastCountdown = 4;
+    st.finalAt = null;
+    st.cam.tz = 1; st.cam.tx = CANVAS_W / 2; st.cam.ty = CANVAS_H / 2;
+    st.banners.push({ text: `ROUND ${gameState.tick}`, sub: gameState.tick === 1 ? 'CHOOSE ONE ACTION ON YOUR PHONE' : undefined, t: st.t, life: 1.25, color: '#ffd875', size: 64, y: 470 });
+    if (sfx.playRoundStart) cue('playRoundStart'); else cue('playTickStart');
+  }, [gameState.phase, gameState.tick]);
+
+  // The showdown, choreographed on the shared server clock.
+  useEffect(() => {
+    const gs = gameState;
+    if (gs.phase !== 'resolution' || !gs.resolutionStartedAt) return;
+    const st = stRef.current;
+    const elapsed0 = serverNow() - gs.resolutionStartedAt;
+    if (elapsed0 > VOLLEY.settle) return;
+    const L = slotLayout(gs.config.slotsPerSide);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const at = (ms: number, fn: () => void) => {
+      const wait = ms - (serverNow() - gs.resolutionStartedAt!);
+      if (wait <= -150) return; // already happened; don't replay stale cues
+      timers.push(setTimeout(fn, Math.max(0, wait)));
+    };
+    const before = new Map((gs.resolutionFrom?.players ?? []).map((p) => [p.id, p]));
+    const players = gs.players.filter((p) => p.slot >= 0);
+    const bullets = gs.lastTickBullets;
+    const deaths = new Set(bullets.filter((b) => b.lethal && b.targetId).map((b) => b.targetId!));
+    const aliveAfter = (team: Team) => players.filter((p) => p.team === team && (before.get(p.id)?.isAlive ?? p.isAlive) && !deaths.has(p.id)).length;
+    const final = deaths.size > 0 && (aliveAfter('sheriffs') === 0 || aliveAfter('outlaws') === 0);
+    const winner: Team | 'draw' | null = !final ? null : aliveAfter('sheriffs') === 0 && aliveAfter('outlaws') === 0 ? 'draw' : aliveAfter('sheriffs') === 0 ? 'outlaws' : 'sheriffs';
+
+    at(0, () => { if (sfx.playReveal) cue('playReveal'); else cue('playTickResolve'); });
+    at(VOLLEY.reveal, () => {
+      for (const p of players) {
+        const was = before.get(p.id);
+        if (!was?.isAlive) continue;
+        if (p.currentAction.startsWith('MOVE') && was.slot !== p.slot) cue('playSpurs', pan(p.team));
+        if (p.currentAction === 'RELOAD') cue('playReloadSpin', pan(p.team));
+        if (p.currentAction === 'COVER' && !was.isCovered) cue('playCoverThud', pan(p.team));
+      }
+    });
+
+    const targetPoint = (b: Bullet) => {
+      const shooter = players.find((p) => p.id === b.shooterId);
+      const team: Team = b.fromTeam;
+      const enemy: Team = team === 'sheriffs' ? 'outlaws' : 'sheriffs';
+      const sf = shooter ? st.frames[shooter.id] : undefined;
+      const dir = facingOf(team);
+      const fromX = (sf?.x ?? teamX(L, team)) + dir * 62 * L.s;
+      const fromY = (sf?.feet ?? L.feet[b.fromSlot]) - gunHeight(L);
+      const laneFeet = L.feet[b.toSlot];
+      let toX = teamX(L, enemy), toY = laneFeet - 72 * L.s;
+      if (b.hit === 'player') {
+        const tf = b.targetId ? st.frames[b.targetId] : undefined;
+        if (tf) { toX = tf.x; toY = tf.feet - (tf.cover > 0.5 ? 46 : 74) * L.s; }
+      } else if (b.hit === 'barrel') {
+        toX = barrelX(L, enemy) - dir * 22 * L.s; toY = laneFeet - barrelHeight(L) * 0.55;
+      } else if (b.hit === 'bullet') {
+        toX = L.midX; toY = (fromY + (laneFeet - gunHeight(L))) / 2;
+      } else {
+        const edge = dir > 0 ? CANVAS_W + 60 : -60;
+        const k = (edge - fromX) / (toX - fromX);
+        toY = fromY + (toY - fromY) * k; toX = edge;
+      }
+      return { fromX, fromY, toX, toY };
+    };
+
+    bullets.forEach((b, i) => {
+      const stagger = (rand(i * 31 + gs.tick) * 60) | 0;
+      let geo: ReturnType<typeof targetPoint> | null = null;
+      at(VOLLEY.move + stagger, () => {
+        geo = targetPoint(b);
+        const dir = facingOf(b.fromTeam);
+        cue('playGunshot', pan(b.fromTeam));
+        st.muzzles.push({ x: geo.fromX, y: geo.fromY, t: st.t, life: 0.12, dir });
+        if (!reducedMotion()) {
+          for (let k = 0; k < 8; k++) st.particles.add({ kind: 'smoke', x: geo.fromX + dir * 20, y: geo.fromY, vx: dir * (40 + Math.random() * 70), vy: -30 - Math.random() * 30, drag: 1.2, size: 6 + Math.random() * 6, life: 1.4 + Math.random() * 0.6, age: 0, color: '#d8ccb4' });
+          for (let k = 0; k < 6; k++) st.particles.add({ kind: 'streak', x: geo.fromX + dir * 24, y: geo.fromY, vx: dir * (300 + Math.random() * 300), vy: (Math.random() - 0.5) * 160, drag: 4, size: 2.5, life: 0.18, age: 0, color: '#ffe1a4', fade: true });
+        }
+        st.bullets.push({ id: b.id, ...geo, bornAt: st.t, dur: Math.max(0.12, (VOLLEY.impact - VOLLEY.move - stagger) / 1000), team: b.fromTeam, hit: b.hit });
+        st.shake.mag = Math.max(st.shake.mag, 3); st.shake.until = st.t + 0.12;
+      });
+      at(VOLLEY.impact, () => {
+        const g = geo ?? targetPoint(b);
+        const p = b.fromTeam === 'sheriffs' ? 0.65 : -0.65;
+        if (final && b.lethal) cue('playFinalShot');
+        cue('playBulletImpact', b.hit, p);
+        if (b.lethal && !final) cue('playKillSting');
+        const motion = !reducedMotion();
         if (b.hit !== 'miss') {
-          st.impacts.push({ x: toX, y: toY, t: st.t, kind: b.hit, team: b.fromTeam });
-          st.shake.mag = b.hit === 'player' ? 7 : 4; st.shake.until = st.t + .2;
+          st.impacts.push({ x: g.toX, y: g.toY, t: st.t, kind: b.hit, lethal: b.lethal });
+          if (motion) { st.shake.mag = b.hit === 'player' ? (b.lethal ? 16 : 10) : 6; st.shake.until = st.t + 0.28; }
+          if (b.hit === 'player' && motion) { st.slowUntil = performance.now() + (b.lethal ? 160 : 80); st.slowScale = 0.06; }
         }
-        st.damages.push({ x: toX, y: toY-38, text: b.hit === 'player' ? '−1' : b.hit === 'barrel' ? 'COVER' : b.hit === 'bullet' ? 'CLASH' : 'MISS', t: st.t, color:b.hit === 'player' ? '#f4a084' : '#ead3a4' });
-        for (let i=0;i<14;i++) {
-          const angle=Math.random()*Math.PI*2, speed=70+Math.random()*150;
-          st.particles.add({ kind:b.hit==='barrel'?'square':'streak', x:toX,y:toY,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-35,gravity:220,drag:.5,size:2+Math.random()*3,life:.5+Math.random()*.25,age:0,color:b.hit==='barrel'?'#bc9062':b.hit==='player'?'#d9b087':'#ffe1a4',fade:true });
+        const label = b.hit === 'player' ? (b.lethal ? 'KILLED!' : '−1 ♥') : b.hit === 'barrel' ? 'BLOCKED' : b.hit === 'bullet' ? 'CLANG!' : 'MISS';
+        const color = b.hit === 'player' ? '#ff6a55' : b.hit === 'barrel' ? '#8fe3c4' : b.hit === 'bullet' ? '#ffd875' : '#c8bfb2';
+        const enemyX = teamX(L, b.fromTeam === 'sheriffs' ? 'outlaws' : 'sheriffs');
+        const fx = b.hit === 'miss' ? enemyX - facingOf(b.fromTeam) * 70 : g.toX;
+        const fy = b.hit === 'miss' ? L.feet[b.toSlot] - 130 * L.s : g.toY - 54;
+        st.floaters.push({ x: fx, y: fy, text: label, t: st.t, color, size: b.hit === 'player' ? 34 : 24, life: b.lethal ? 1.6 : 1.1 });
+        if (motion) {
+          const n = b.hit === 'barrel' ? 18 : b.hit === 'bullet' ? 22 : 14;
+          for (let k = 0; k < n; k++) {
+            const a = Math.random() * Math.PI * 2, sp = 90 + Math.random() * 220;
+            st.particles.add({
+              kind: b.hit === 'barrel' ? 'square' : 'streak', x: g.toX, y: g.toY,
+              vx: Math.cos(a) * sp - facingOf(b.fromTeam) * -60, vy: Math.sin(a) * sp - 80, gravity: b.hit === 'barrel' ? 900 : 380, drag: 0.6,
+              size: b.hit === 'barrel' ? 4 + Math.random() * 4 : 2 + Math.random() * 2.5, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 20,
+              life: 0.6 + Math.random() * 0.4, age: 0, color: b.hit === 'barrel' ? (k % 2 ? '#a06a3d' : '#6b4423') : b.hit === 'player' ? '#ffb48f' : '#ffe9a8', fade: true,
+            });
+          }
         }
-      }, VOLLEY.impact-elapsed));
+      });
+    });
+
+    // Round headline + match-ending slow-motion.
+    at(VOLLEY.impact + 180, () => {
+      if (final) return;
+      const h = roundHeadline({ ...gs, players: gs.players.map((p) => ({ ...p, isAlive: (before.get(p.id)?.isAlive ?? p.isAlive) && !deaths.has(p.id) })) });
+      if (h) st.banners.push({ text: h, t: st.t, life: 1.15, color: h === 'CLANG!' || h === 'SPLINTERS!' ? '#ffd875' : '#ff8a75', size: 58, y: 470 });
+    });
+    if (final) {
+      at(VOLLEY.impact - 260, () => {
+        st.finalAt = st.t;
+        if (reducedMotion()) return;
+        const victims = [...deaths].map((id) => st.frames[id]).filter(Boolean);
+        if (victims.length) {
+          const vx = victims.reduce((a, f) => a + f.x, 0) / victims.length;
+          const vy = victims.reduce((a, f) => a + f.feet - 60 * L.s, 0) / victims.length;
+          st.cam.tz = 1.35; st.cam.tx = vx * 0.7 + CANVAS_W / 2 * 0.3; st.cam.ty = vy * 0.7 + CANVAS_H / 2 * 0.3;
+        }
+      });
+      at(VOLLEY.impact, () => {
+        st.flash = 1;
+        if (!reducedMotion()) { st.slowUntil = performance.now() + 1700; st.slowScale = 0.3; }
+      });
+      at(VOLLEY.impact + 900, () => {
+        const text = winner === 'draw' ? 'NOBODY WINS' : winner === 'sheriffs' ? 'SHERIFFS WIN!' : 'OUTLAWS WIN!';
+        const color = winner === 'draw' ? '#ead3b0' : TEAM_COL[winner as Team].text;
+        st.banners.push({ text, sub: winner === 'draw' ? 'everyone bit the dust' : 'the dust settles…', t: st.t, life: 2.6, color, size: 84, y: 450 });
+        st.cam.tz = 1.08;
+      });
     }
-    return () => { scheduled.forEach(clearTimeout); };
+    return () => timers.forEach(clearTimeout);
   }, [gameState.phase, gameState.resolutionStartedAt]);
+
+  // Emotes from phones float above that player's spot.
+  useEffect(() => {
+    const onEmote = ({ playerId, emoji }: { playerId: string; emoji: Emote }) => {
+      const st = stRef.current;
+      const gs = gsRef.current;
+      const p = gs.players.find((x) => x.id === playerId);
+      if (!p || p.slot < 0) return;
+      const L = slotLayout(gs.config.slotsPerSide);
+      const f = st.frames[p.id];
+      const x = f ? f.x : teamX(L, p.team);
+      const y = f ? headY(L, f) - 30 : L.ys[p.slot];
+      st.emotes.push({ emoji, x: x + facingOf(p.team) * 40, y, t: st.t, name: p.name, team: p.team });
+      if (st.emotes.length > 16) st.emotes.shift();
+      cue('playEmotePop');
+    };
+    socket.on('emote', onEmote);
+    return () => { socket.off('emote', onEmote); };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    let raf = 0;
     let last = performance.now();
-
     const frame = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000);
+      const real = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const st = stateRef.current;
+      const st = stRef.current;
       const gs = gsRef.current;
+      const scale = now < st.slowUntil ? st.slowScale : 1;
+      const dt = real * scale;
       st.t += dt;
 
       if (gs.phase === 'planning' && gs.tickStartTime) {
-        const elapsed = serverNow() - gs.tickStartTime;
-        st.timeLeft = Math.max(0, gs.config.tickDuration - elapsed);
-      } else {
-        st.timeLeft = 0;
-      }
+        st.timeLeft = Math.max(0, gs.config.tickDuration - (serverNow() - gs.tickStartTime));
+        const sec = Math.ceil(st.timeLeft / 1000);
+        if (sec <= 3 && sec >= 1 && sec < st.lastCountdown) { st.lastCountdown = sec; cue('playCountdownTick', (3 - sec) / 2); }
+      } else st.timeLeft = 0;
 
       st.particles.step(dt);
-      if (document.hidden) { st.bullets = []; st.muzzles = []; st.impacts = []; st.damages = []; }
+      stepHats(st.hats, dt);
+      if (document.hidden) { st.bullets = []; st.muzzles = []; st.impacts = []; st.floaters = []; }
 
-      for (const m of st.ambient) {
-        m.x += m.vx * dt;
-        m.y += m.vy * dt;
-        if (m.y < -5) { m.y = CANVAS_H + 5; m.x = rand(st.t * 1000 + m.r) * CANVAS_W; }
-        if (m.x < -5) m.x = CANVAS_W + 5;
-        if (m.x > CANVAS_W + 5) m.x = -5;
-      }
-
-      const shakeActive = !reducedMotion() && st.t < st.shake.until;
-      if (shakeActive) {
-        const remaining = Math.max(0, st.shake.until - st.t);
-        const decay = remaining / 0.6;
+      const motion = !reducedMotion();
+      if (motion && st.t < st.shake.until) {
+        const decay = Math.max(0, st.shake.until - st.t) / 0.3;
         st.shake.x = (Math.random() - 0.5) * st.shake.mag * decay;
         st.shake.y = (Math.random() - 0.5) * st.shake.mag * decay;
-      } else {
-        st.shake.x *= 0.8;
-        st.shake.y *= 0.8;
-      }
+      } else { st.shake.x *= 0.8; st.shake.y *= 0.8; st.shake.mag *= 0.9; }
+      const c = st.cam;
+      if (!motion) { c.tz = 1; c.tx = CANVAS_W / 2; c.ty = CANVAS_H / 2; }
+      const ease = 1 - Math.pow(0.02, real);
+      c.zoom += (c.tz - c.zoom) * ease; c.x += (c.tx - c.x) * ease; c.y += (c.ty - c.y) * ease;
+      st.flash = Math.max(0, st.flash - real * 2.2);
 
-      st.flash = Math.max(0, st.flash - dt * 4);
-
-      draw(ctx, gs, st, bgRef.current);
-      animRef.current = requestAnimationFrame(frame);
+      draw(ctx, gs, st, bgRef.current, motion);
+      raf = requestAnimationFrame(frame);
     };
-    animRef.current = requestAnimationFrame(frame);
-    return () => { if (animRef.current != null) cancelAnimationFrame(animRef.current); };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   return (
@@ -311,641 +315,135 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
       role="img"
       width={CANVAS_W}
       height={CANVAS_H}
-      style={{ width: '100%', height: '100%', display: 'block', imageRendering: 'auto' }}
+      style={{ width: '100%', height: '100%', display: 'block' }}
     />
   );
 }
 
-function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bgImg: HTMLImageElement | null) {
+function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: HTMLImageElement | null, motion: boolean) {
   const L = slotLayout(gs.config.slotsPerSide);
+  const elapsed = gs.phase === 'resolution' && gs.resolutionStartedAt ? serverNow() - gs.resolutionStartedAt : -1;
+  const before = new Map((gs.resolutionFrom?.players ?? []).map((p) => [p.id, p]));
+  const seated = gs.players.filter((p) => p.slot >= 0);
+
   ctx.save();
   ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-  ctx.translate(st.shake.x, st.shake.y);
+  // Camera: shake + slow-mo zoom (scene only; HUD stays put).
+  ctx.translate(CANVAS_W / 2 + st.shake.x, CANVAS_H / 2 + st.shake.y);
+  ctx.scale(st.cam.zoom, st.cam.zoom);
+  ctx.translate(-st.cam.x, -st.cam.y);
 
-  drawBackground(ctx, bgImg);
-  drawVignette(ctx);
-  drawFloor(ctx);
-  drawLaneGuides(ctx, L);
-  drawArena(ctx, L, gs, st);
-  drawMuzzles(ctx, st);
-  if (!reducedMotion()) st.particles.draw(ctx);
-  drawBullets(ctx, st);
-  drawImpacts(ctx, st);
-  drawDamages(ctx, st);
-  if (!reducedMotion()) drawDust(ctx, st);
+  drawBackground(ctx, bg, st.t);
+  drawLanes(ctx, L, new Set());
 
+  // Compute every actor's frame first (positions are needed for bullets/emotes).
+  for (const p of seated) {
+    const anim = (st.anims[p.id] ||= {});
+    const barrel = gs.barrels.find((b) => b.team === p.team && b.slot === p.slot);
+    st.frames[p.id] = actorFrame(L, p, elapsed >= 0 ? before.get(p.id) : undefined, barrel, elapsed, VOLLEY, anim, motion);
+  }
+
+  // Back-to-front by lane: corpses, actors, then barrels (so crouchers tuck behind).
+  const order = [...seated].sort((a, b) => st.frames[a.id].feet - st.frames[b.id].feet || Number(a.isAlive) - Number(b.isAlive));
+  const drawn = new Set<string>();
+  for (let lane = 0; lane < L.n; lane++) {
+    const inLane = order.filter((p) => !drawn.has(p.id) && st.frames[p.id].feet <= L.feet[lane] + 1);
+    for (const p of inLane) {
+      drawn.add(p.id);
+      const anim = st.anims[p.id];
+      const f = st.frames[p.id];
+      const a = elapsed / 1000;
+      const was = before.get(p.id);
+      const moving = elapsed >= VOLLEY.reveal && elapsed < VOLLEY.move && was && was.slot !== p.slot;
+      const fired = p.currentAction.startsWith('SHOOT') && gs.lastTickBullets.some((b) => b.shooterId === p.id);
+      const recoilT = (elapsed - VOLLEY.move) / 260;
+      drawActor(ctx, L, p, f, anim, {
+        walk: motion && moving ? Math.sin(a * 32) : 0,
+        recoil: motion && fired && recoilT >= 0 && recoilT < 1 ? Math.sin(recoilT * Math.PI) : 0,
+        reload: p.currentAction === 'RELOAD' && elapsed >= VOLLEY.reveal && elapsed < VOLLEY.impact ? Math.sin(clamp01((elapsed - VOLLEY.reveal) / (VOLLEY.impact - VOLLEY.reveal)) * Math.PI) : 0,
+      }, st.t, motion);
+    }
+    for (const team of ['sheriffs', 'outlaws'] as Team[]) {
+      const barrel = gs.barrels.find((b) => b.team === team && b.slot === lane);
+      const hider = seated.find((p) => p.team === team && p.isAlive && p.slot === lane && st.frames[p.id].cover > 0.05);
+      const hitRecently = st.impacts.some((im) => im.kind === 'barrel' && Math.abs(im.y - (L.feet[lane] - barrelHeight(L) * 0.55)) < 4 && Math.abs(im.x - barrelX(L, team)) < 60);
+      drawBarrel(ctx, L, barrelX(L, team), L.feet[lane], barrel, { cover: hider ? st.frames[hider.id].cover : 0, team, wobble: hitRecently ? 1 : 0, t: st.t });
+    }
+  }
+  drawHats(ctx, st.hats);
+
+  // Aim lines: from reveal until impact, show exactly which lane each gun points at.
+  if (elapsed >= 0 && elapsed < VOLLEY.impact + 120) {
+    const fade = elapsed > VOLLEY.move ? 1 - clamp01((elapsed - VOLLEY.move) / (VOLLEY.impact - VOLLEY.move)) : clamp01(elapsed / 200);
+    for (const b of gs.lastTickBullets) {
+      const sf = b.shooterId ? st.frames[b.shooterId] : undefined;
+      if (!sf) continue;
+      const enemy: Team = b.fromTeam === 'sheriffs' ? 'outlaws' : 'sheriffs';
+      const dir = facingOf(b.fromTeam);
+      const x1 = sf.x + dir * 62 * L.s, y1 = sf.feet - gunHeight(L);
+      const x2 = teamX(L, enemy), y2 = L.feet[b.toSlot] - gunHeight(L);
+      ctx.save();
+      ctx.globalAlpha = 0.85 * fade;
+      ctx.strokeStyle = TEAM_COL[b.fromTeam].main; ctx.lineWidth = 3; ctx.setLineDash([12, 10]);
+      ctx.lineDashOffset = -st.t * 60;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.setLineDash([]);
+      // Crosshair on the targeted lane
+      ctx.lineWidth = 3; ctx.strokeStyle = '#ff6a55';
+      ctx.beginPath(); ctx.arc(x2, y2, 22 * L.s, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x2 - 32 * L.s, y2); ctx.lineTo(x2 + 32 * L.s, y2); ctx.moveTo(x2, y2 - 32 * L.s); ctx.lineTo(x2, y2 + 32 * L.s); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  drawMuzzles(ctx, st.muzzles, st.t);
+  if (motion) st.particles.draw(ctx);
+  drawBullets(ctx, st.bullets, st.t);
+  drawImpacts(ctx, st.impacts, st.t);
+
+  // Plates, then intent markers / action badges above heads.
+  for (const p of seated) {
+    const f = st.frames[p.id];
+    const laneY = f.feet - (L.feet[0] - L.ys[0]);
+    drawPlate(ctx, L, p, laneY, p.actionLocked, gs.phase === 'planning', st.t, f.cover > 0.6 ? (f.covered ? 'safe' : 'exposed') : null);
+  }
+  for (const p of seated) {
+    if (!p.isAlive && !(elapsed >= 0 && before.get(p.id)?.isAlive)) continue;
+    const f = st.frames[p.id];
+    const hy = headY(L, f);
+    if (gs.phase === 'planning' && p.isAlive) {
+      drawIntentMarker(ctx, L, f.x, hy, p.actionLocked, st.t, motion);
+    } else if (elapsed >= 0 && elapsed < VOLLEY.settle + 300 && before.get(p.id)?.isAlive) {
+      const was = before.get(p.id)!;
+      let override: { label: string; color: string } | undefined;
+      if (p.currentAction.startsWith('MOVE') && was.slot === p.slot && elapsed > VOLLEY.reveal) override = { label: 'BLOCKED', color: '#ff9b7a' };
+      if (p.currentAction === 'COVER' && f.noCover) override = { label: 'NO COVER', color: '#ff6a55' };
+      if (p.currentAction.startsWith('SHOOT') && !gs.lastTickBullets.some((b) => b.shooterId === p.id)) override = { label: 'NO TARGET', color: '#c8bfb2' };
+      ctx.save();
+      ctx.globalAlpha = 1 - clamp01((elapsed - VOLLEY.settle) / 300);
+      drawActionBadge(ctx, L, f.x, hy, p, elapsed / 1000, override);
+      ctx.restore();
+    }
+  }
+  drawFloaters(ctx, st.floaters, st.t);
+  drawEmotes(ctx, st.emotes, st.t);
+  ctx.restore();
+
+  // Screen-space layers
+  const heartbeat = gs.phase === 'planning' && st.timeLeft > 0 && st.timeLeft < 3000 ? (0.5 + 0.5 * Math.sin(st.t * 9)) * (1 - st.timeLeft / 3000) : 0;
+  drawVignette(ctx, motion ? heartbeat : 0);
+  if (st.finalAt != null) {
+    ctx.fillStyle = 'rgba(40,20,10,0.18)';
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  }
+  drawHUD(ctx, gs, st.timeLeft, st.t);
+  if (gs.phase === 'planning') drawCountdown(ctx, st.timeLeft, motion);
+  drawBanners(ctx, st.banners, st.t);
+  if (gs.phase === 'planning') drawLegend(ctx, gs);
   if (st.flash > 0.01) {
-    ctx.fillStyle = `rgba(255,240,200,${st.flash * 0.35})`;
-    ctx.fillRect(-50, -50, CANVAS_W + 100, CANVAS_H + 100);
-  }
-
-  ctx.restore();
-  drawHUD(ctx, gs, st);
-  ctx.textAlign='center';ctx.fillStyle='#ead3b0';ctx.font='11px "Space Mono", monospace';
-  ctx.fillText(gs.phase === 'planning' ? 'CHOOSE ON YOUR PHONE  /  EVERYBODY DRAWS TOGETHER' : 'MOVE  /  DRAW  /  IMPACT',800,145);
-  ctx.fillStyle='#c4bba9';ctx.fillText(`O.K. CORRAL     /     ROOM ${gs.roomCode}`,800,876);
-}
-
-function drawBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null) {
-  const pad = 40;
-  if (img && img.complete) {
-    ctx.drawImage(img, -pad, -pad, CANVAS_W + pad * 2, CANVAS_H + pad * 2);
-    const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
-    g.addColorStop(0, 'rgba(15,30,39,0.12)');
-    g.addColorStop(0.5, 'rgba(26,37,44,0.22)');
-    g.addColorStop(1, 'rgba(13,26,34,0.55)');
-    ctx.fillStyle = g;
-    ctx.fillRect(-pad, -pad, CANVAS_W + pad * 2, CANVAS_H + pad * 2);
-  } else {
-    const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
-    g.addColorStop(0, '#2a1708');
-    g.addColorStop(0.5, '#5a3418');
-    g.addColorStop(1, '#1a0a04');
-    ctx.fillStyle = g;
-    ctx.fillRect(-40, -40, CANVAS_W + 80, CANVAS_H + 80);
+    ctx.fillStyle = `rgba(255,244,214,${st.flash * 0.55})`;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   }
 }
 
-function drawVignette(ctx: CanvasRenderingContext2D) {
-  const g = ctx.createRadialGradient(CANVAS_W / 2, CANVAS_H / 2, CANVAS_H * 0.3, CANVAS_W / 2, CANVAS_H / 2, CANVAS_H * 0.85);
-  g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(1, 'rgba(10,24,32,0.38)');
-  ctx.fillStyle = g;
-  ctx.fillRect(-40, -40, CANVAS_W + 80, CANVAS_H + 80);
-}
-
-function drawFloor(ctx: CanvasRenderingContext2D) {
-  ctx.save();
-  const floorY = 780;
-  const g = ctx.createLinearGradient(0, floorY, 0, CANVAS_H);
-  g.addColorStop(0, 'rgba(60,35,15,0.0)');
-  g.addColorStop(0.3, 'rgba(70,40,18,0.55)');
-  g.addColorStop(1, 'rgba(30,15,6,0.85)');
-  ctx.fillStyle = g;
-  ctx.fillRect(-40, floorY, CANVAS_W + 80, CANVAS_H - floorY + 40);
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-  ctx.lineWidth = 1.2;
-  for (let x = 40; x < CANVAS_W; x += 90) {
-    ctx.beginPath();
-    ctx.moveTo(x, floorY + 10);
-    ctx.lineTo(x + 10, CANVAS_H);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawLaneGuides(ctx: CanvasRenderingContext2D, L: Layout) {
-  ctx.save();
-  L.ys.forEach((y, i) => {
-    ctx.fillStyle = i % 2 === 0 ? 'rgba(18,35,43,.36)' : 'rgba(18,35,43,.19)';
-    roundRect(ctx, 185, y-L.slotHeight/2+3, 1230, L.slotHeight-6, 12);ctx.fill();
-    ctx.strokeStyle='rgba(239,206,159,.15)';ctx.lineWidth=1;ctx.setLineDash([4,12]);
-    ctx.beginPath();ctx.moveTo(600,y);ctx.lineTo(1000,y);ctx.stroke();ctx.setLineDash([]);
-    ctx.font='bold 15px "Space Mono",monospace';ctx.textAlign='center';ctx.fillStyle='#d7c6ac';
-    ctx.fillText(String(i+1).padStart(2,'0'),145,y+5);ctx.fillText(String(i+1).padStart(2,'0'),1455,y+5);
-  });
-  ctx.restore();
-}
-
-function drawArena(ctx: CanvasRenderingContext2D, L: Layout, gs: GameState, st: AnimState) {
-  for (let s = 0; s < gs.config.slotsPerSide; s++) {
-    const y = L.ys[s];
-    drawBarrel(ctx, L.sheriffBarrel, y, findBarrel(gs, 'sheriffs', s), Math.min(1,L.slotHeight/125));
-    drawPlayer(ctx, L, y, findPlayer(gs, 'sheriffs', s), 'sheriffs', st, gs);
-    drawBarrel(ctx, L.outlawBarrel, y, findBarrel(gs, 'outlaws', s), Math.min(1,L.slotHeight/125));
-    drawPlayer(ctx, L, y, findPlayer(gs, 'outlaws', s), 'outlaws', st, gs);
-  }
-}
-
-function findPlayer(gs: GameState, team: Team, slot: number): Player | undefined {
-  const matches = gs.players.filter((p) => p.team === team && p.slot === slot);
-  if (matches.length === 0) return undefined;
-  return matches.find((p) => p.isAlive) ?? matches[0];
-}
-function findBarrel(gs: GameState, team: Team, slot: number): Barrel | undefined {
-  return gs.barrels.find((b) => b.team === team && b.slot === slot);
-}
-
-function drawBarrel(ctx: CanvasRenderingContext2D, x: number, y: number, barrel: Barrel | undefined, scale = 1) {
-  if (!barrel) return;
-  ctx.save();
-  ctx.translate(x, y + 14);
-  ctx.scale(0.82 * scale, 0.82 * scale);
-  const hp = barrel.hp;
-  if (hp <= 0) {
-    ctx.fillStyle = COL.woodDark;
-    ctx.beginPath();
-    ctx.ellipse(0, 35, 36, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = COL.wood;
-    for (let i = 0; i < 5; i++) {
-      const px = -25 + i * 12 + Math.sin(i) * 2;
-      const h = 8 + (i % 2) * 6;
-      ctx.fillRect(px, 35 - h, 8, h);
-    }
-    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(-30, 27, 60, 10);
-    ctx.restore();
-    return;
-  }
-
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.beginPath();
-  ctx.ellipse(0, 50, 42, 8, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const bodyColor = hp === 3 ? COL.wood : hp === 2 ? '#5a371e' : '#3e2417';
-  const bodyGrad = ctx.createLinearGradient(-42, 0, 42, 0);
-  bodyGrad.addColorStop(0, COL.woodDark);
-  bodyGrad.addColorStop(0.5, bodyColor);
-  bodyGrad.addColorStop(1, COL.woodDark);
-  ctx.fillStyle = bodyGrad;
-  roundRect(ctx, -40, -45, 80, 90, 12);
-  ctx.fill();
-
-  ctx.fillStyle = COL.woodLight;
-  ctx.beginPath();
-  ctx.ellipse(0, -45, 40, 10, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = COL.woodDark;
-  ctx.beginPath();
-  ctx.ellipse(0, -45, 34, 7, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#2a2420';
-  ctx.fillRect(-42, -25, 84, 6);
-  ctx.fillRect(-42, 22, 84, 6);
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  ctx.fillRect(-42, -25, 84, 1.5);
-  ctx.fillRect(-42, 22, 84, 1.5);
-
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-  ctx.lineWidth = 1;
-  for (let i = -3; i <= 3; i++) {
-    const px = i * 10;
-    ctx.beginPath();
-    ctx.moveTo(px, -43);
-    ctx.lineTo(px, 43);
-    ctx.stroke();
-  }
-
-  if (hp < 3) {
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(-18, -10); ctx.lineTo(-10, 8); ctx.lineTo(-14, 20);
-    ctx.stroke();
-  }
-  if (hp < 2) {
-    ctx.strokeStyle = 'rgba(10,24,32,0.38)';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(12, -20); ctx.lineTo(6, -2); ctx.lineTo(14, 14); ctx.lineTo(8, 28);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
-    ctx.beginPath(); ctx.arc(10, 0, 3, 0, Math.PI * 2); ctx.fill();
-  }
-
-  for (let i = 0; i < 3; i++) {
-    ctx.fillStyle = i < hp ? COL.gold : 'rgba(0,0,0,0.4)';
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    ctx.beginPath();
-    ctx.arc(-12 + i * 12, -58, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-function drawPlayer(ctx: CanvasRenderingContext2D, L: Layout, y: number, player: Player | undefined, team: Team, st: AnimState, gs: GameState) {
-  if (!player) {
-    const x = team === 'sheriffs' ? L.sheriffX : L.outlawX;
-    ctx.save();
-    ctx.globalAlpha = 0.15;
-    ctx.strokeStyle = team === 'sheriffs' ? COL.sheriff : COL.outlaw;
-    ctx.setLineDash([4, 6]);
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y, 40, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
-    return;
-  }
-
-  const anim = st.playerAnim[player.id] ||= {};
-  let drawY = y;
-  if (anim.slideFrom != null && anim.slideTo != null && anim.slideStart != null) {
-    const dur = VOLLEY.move / 1000;
-    const tt = Math.min(1, (st.t - anim.slideStart) / dur);
-    if (tt < 1 && !reducedMotion()) {
-      const fromY = L.ys[anim.slideFrom];
-      const toY = L.ys[anim.slideTo];
-      drawY = fromY + (toY - fromY) * easeInOutQuad(tt);
-    }
-  }
-
-  const motion = !reducedMotion();
-  const actionTime = gs.phase === 'resolution' && gs.resolutionStartedAt ? (serverNow()-gs.resolutionStartedAt)/1000 : -1;
-  const walk = motion && actionTime >= 0 && actionTime < .42 && player.currentAction.startsWith('MOVE') && anim.slideFrom !== anim.slideTo ? Math.sin(actionTime*35) : 0;
-  const recoil = motion && player.currentAction.startsWith('SHOOT') && gs.lastTickBullets.some(b => b.fromTeam === team && b.fromSlot === player.slot) && actionTime >= .42 && actionTime < .7 ? Math.sin((actionTime-.42)/.28*Math.PI) : 0;
-  const reload = actionTime >= 0 && actionTime < .84 && player.currentAction === 'RELOAD' ? Math.sin(actionTime/.84*Math.PI) : 0;
-  const scale = Math.min(1.05, L.slotHeight/140);
-  const x = team === 'sheriffs' ? L.sheriffX : L.outlawX;
-  const isSheriff = team === 'sheriffs';
-  const facing = isSheriff ? 1 : -1;
-
-  let flinch = 0;
-  if (anim.flinchAt != null) {
-    const ft = st.t - anim.flinchAt;
-    if (ft < 0.35) flinch = Math.sin(ft * 40) * (1 - ft / 0.35) * 6;
-  }
-
-  let deadAngle = 0;
-  let deadY = 0;
-  let deadAlpha = 1;
-  if (anim.deathAt != null) {
-    const dt = st.t - anim.deathAt;
-    const p = Math.min(1, dt / 0.8);
-    deadAngle = easeOutCubic(p) * (Math.PI / 2 - 0.2) * facing;
-    deadY = easeOutCubic(p) * 30;
-    if (dt > 1.2) deadAlpha = Math.max(0.35, 1 - (dt - 1.2));
-  } else if (!player.isAlive) {
-    deadAngle = (Math.PI / 2 - 0.2) * facing;
-    deadY = 30;
-    deadAlpha = 0.4;
-  }
-
-  const barrel = findBarrel(gs, team, player.slot);
-  const covered = player.isCovered && !!barrel && barrel.hp > 0;
-
-  ctx.save();
-  ctx.translate(x + flinch, drawY + deadY);
-  ctx.rotate(motion ? deadAngle : 0);
-  ctx.scale(scale, scale);
-  ctx.globalAlpha = deadAlpha;
-
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.beginPath();
-  ctx.ellipse(0, 60, 30, 6, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const targetCover = covered ? 1 : 0;
-  anim.cover = reducedMotion() ? targetCover : (anim.cover ?? 0) + (targetCover - (anim.cover ?? 0)) * .16;
-  ctx.translate(facing * anim.cover * 12, anim.cover * 17);
-  ctx.scale(1, 1 - anim.cover * .18);
-
-  drawCowboy(ctx, team, facing === 1 ? 1 : -1, motion ? st.t : 0, Array.from(player.name).reduce((n,c)=>n+c.charCodeAt(0),0), { walk, recoil, reload });
-
-  if (gs.phase === 'planning' && player.actionLocked && player.isAlive) {
-    ctx.save();
-    ctx.globalAlpha = 1;
-    const pulse = reducedMotion() ? 1 : 1 + Math.sin(st.t * 4) * .06;
-    ctx.translate(facing * -38, -78);
-    ctx.scale(pulse, pulse);
-    ctx.fillStyle = '#4ade80';
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(0, 0, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px system-ui';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('✓', 0, 1);
-    ctx.restore();
-  }
-
-  ctx.restore();
-
-  if (player.isAlive) {
-    const hudX = isSheriff ? x - 62 : x + 62;
-    drawPlayerHUD(ctx, hudX, drawY, player);
-  }
-
-  ctx.save();
-  ctx.globalAlpha = player.isAlive ? 0.92 : 0.45;
-  ctx.fillStyle = 'rgba(0,0,0,0.8)';
-  ctx.strokeStyle = team === 'sheriffs' ? COL.sheriff : COL.outlaw;
-  ctx.lineWidth = 1;
-  const name = (player.name || '').toUpperCase().slice(0, 10);
-  ctx.font = 'bold 12px ui-monospace, monospace';
-  const w = Math.min(90, ctx.measureText(name).width + 14);
-  if (gs.phase === 'resolution' && player.isAlive && actionTime < 1.5) {
-    const cue = player.currentAction === 'RELOAD' ? '+1 AMMO' : player.currentAction === 'COVER' ? 'COVER' : player.currentAction.startsWith('MOVE') ? (anim.slideFrom !== anim.slideTo && anim.slideStart != null && st.t-anim.slideStart < 1.5 ? 'MOVE' : 'HELD') : '';
-    ctx.fillStyle = '#d4e7d8';ctx.font='bold 12px "Space Mono", monospace';ctx.textAlign='center';
-    ctx.fillText(cue,x+facing*115,drawY+28);
-  }
-  const nameY = drawY + 63*scale;
-  roundRect(ctx, x - w / 2, nameY - 9, w, 18, 3);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = player.isAlive ? COL.bone : '#999';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(name, x, nameY);
-  ctx.restore();
-}
-
-function drawPlayerHUD(ctx: CanvasRenderingContext2D, x: number, y: number, player: Player) {
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  // Hearts: 3 stacked, large enough to read at distance
-  const heartSpacing = 18;
-  const heartTop = y - 16;
-  for (let i = 0; i < 3; i++) {
-    drawHeart(ctx, x + (i-1)*heartSpacing, heartTop, 10, i < player.hp ? '#ff4c4c' : '#2a1012');
-  }
-  // Ammo: 3 stacked below hearts
-  const ammoSpacing = 18;
-  const ammoTop = y + 10;
-  for (let i = 0; i < 3; i++) {
-    const by = ammoTop;
-    const bx = x + (i-1)*ammoSpacing;
-    ctx.fillStyle = i < player.ammo ? COL.goldBright : '#333';
-    ctx.strokeStyle = '#1a1410';
-    ctx.lineWidth = 1.5;
-    roundRect(ctx, bx - 6, by - 6, 12, 14, 3);
-    ctx.fill();
-    ctx.stroke();
-    if (i < player.ammo) {
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillRect(bx - 4, by - 4, 8, 1.5);
-    }
-  }
-  ctx.restore();
-}
-
-function drawHeart(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string) {
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy + size * 0.6);
-  ctx.bezierCurveTo(cx + size, cy + size * 0.2, cx + size * 0.8, cy - size * 0.7, cx, cy - size * 0.1);
-  ctx.bezierCurveTo(cx - size * 0.8, cy - size * 0.7, cx - size, cy + size * 0.2, cx, cy + size * 0.6);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawMuzzles(ctx: CanvasRenderingContext2D, st: AnimState) {
-  for (let i = st.muzzles.length - 1; i >= 0; i--) {
-    const m = st.muzzles[i];
-    const age = st.t - m.t;
-    if (age > m.life) { st.muzzles.splice(i, 1); continue; }
-    const p = age / m.life;
-    const alpha = 1 - p;
-    const size = 30 + p * 50;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.translate(m.x + m.dir * 30, m.y);
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
-    g.addColorStop(0, `rgba(255,240,180,${alpha})`);
-    g.addColorStop(0.3, `rgba(255,180,60,${alpha * 0.7})`);
-    g.addColorStop(1, 'rgba(255,100,20,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0, 0, size, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = `rgba(255,230,160,${alpha})`;
-    ctx.lineWidth = 4 * (1 - p);
-    for (let k = 0; k < 5; k++) {
-      const ang = (k / 5) * Math.PI * 2 + p;
-      const r1 = size * 0.3;
-      const r2 = size * (0.9 + Math.random() * 0.3);
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(ang) * r1, Math.sin(ang) * r1);
-      ctx.lineTo(Math.cos(ang) * r2, Math.sin(ang) * r2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-}
-
-function drawBullets(ctx: CanvasRenderingContext2D, st: AnimState) {
-  for (let i = st.bullets.length - 1; i >= 0; i--) {
-    const b = st.bullets[i];
-    const t = (st.t - b.bornAt) / b.dur;
-    if (t > 1) { st.bullets.splice(i, 1); continue; }
-    const x = b.fromX + (b.toX - b.fromX) * t;
-    const y = b.fromY + (b.toY - b.fromY) * t;
-    const angle = Math.atan2(b.toY - b.fromY, b.toX - b.fromX);
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    const trail = 80;
-    const tg = ctx.createLinearGradient(-trail, 0, 0, 0);
-    tg.addColorStop(0, 'rgba(255,220,120,0)');
-    tg.addColorStop(1, 'rgba(255,240,180,0.9)');
-    ctx.fillStyle = tg;
-    ctx.fillRect(-trail, -2, trail, 4);
-    ctx.fillStyle = '#fff9e0';
-    ctx.beginPath();
-    ctx.arc(0, 0, 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalCompositeOperation = 'lighter';
-    const gg = ctx.createRadialGradient(0, 0, 0, 0, 0, 10);
-    gg.addColorStop(0, 'rgba(255,200,100,0.8)');
-    gg.addColorStop(1, 'rgba(255,200,100,0)');
-    ctx.fillStyle = gg;
-    ctx.fillRect(-10, -10, 20, 20);
-    ctx.restore();
-  }
-}
-
-function drawImpacts(ctx: CanvasRenderingContext2D, st: AnimState) {
-  for (let i = st.impacts.length - 1; i >= 0; i--) {
-    const im = st.impacts[i];
-    const age = st.t - im.t;
-    const life = 0.5;
-    if (age > life) { st.impacts.splice(i, 1); continue; }
-    const p = age / life;
-    ctx.save();
-    ctx.translate(im.x, im.y);
-    ctx.globalCompositeOperation = 'lighter';
-    if (im.kind === 'bullet') {
-      const r = 20 + p * 60;
-      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
-      g.addColorStop(0, `rgba(255,250,220,${1 - p})`);
-      g.addColorStop(0.5, `rgba(255,210,120,${(1 - p) * 0.6})`);
-      g.addColorStop(1, 'rgba(255,100,20,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = `rgba(255,240,180,${(1 - p) * 0.9})`;
-      ctx.lineWidth = 3 * (1 - p);
-      ctx.beginPath(); ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2); ctx.stroke();
-    } else if (im.kind === 'barrel') {
-      const r = 15 + p * 30;
-      ctx.fillStyle = `rgba(180,120,60,${(1 - p) * 0.7})`;
-      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-    } else if (im.kind === 'player') {
-      const r = 20 + p * 40;
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = `rgba(245,192,133,${(1 - p) * 0.35})`;
-      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore();
-  }
-}
-
-function drawDamages(ctx: CanvasRenderingContext2D, st: AnimState) {
-  for (let i = st.damages.length - 1; i >= 0; i--) {
-    const d = st.damages[i];
-    const age = st.t - d.t;
-    const life = 1.0;
-    if (age > life) { st.damages.splice(i, 1); continue; }
-    const p = age / life;
-    ctx.save();
-    ctx.globalAlpha = 1 - p * p;
-    ctx.font = `bold ${d.text === '−1' ? 30 : 17}px 'Space Mono', monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = d.color;
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 4;
-    const y = d.y - p * 50;
-    ctx.strokeText(d.text, d.x, y);
-    ctx.fillText(d.text, d.x, y);
-    ctx.restore();
-  }
-}
-
-function drawDust(ctx: CanvasRenderingContext2D, st: AnimState) {
-  ctx.save();
-  ctx.fillStyle = 'rgba(255,230,180,0.35)';
-  for (const m of st.ambient) {
-    ctx.globalAlpha = m.a;
-    ctx.beginPath();
-    ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-function drawHUD(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState) {
-  const barH = 100;
-  const grad = ctx.createLinearGradient(0, 0, 0, barH);
-  grad.addColorStop(0, 'rgba(0,0,0,0.8)');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, CANVAS_W, barH + 20);
-
-  const sheriffsAlive = gs.players.filter((p) => p.team === 'sheriffs' && p.isAlive).length;
-  const outlawsAlive = gs.players.filter((p) => p.team === 'outlaws' && p.isAlive).length;
-
-  drawTeamBadge(ctx, 40, 20, 'SHERIFFS', sheriffsAlive, COL.sheriff, COL.sheriffDark);
-  drawTeamBadge(ctx, CANVAS_W - 340, 20, 'OUTLAWS', outlawsAlive, COL.outlaw, COL.outlawDark);
-
-  const cx = CANVAS_W / 2;
-  ctx.save();
-  ctx.fillStyle = 'rgba(15,8,4,0.92)';
-  ctx.strokeStyle = COL.wood;
-  ctx.lineWidth = 2;
-  roundRect(ctx, cx - 260, 20, 520, 75, 8);
-  ctx.fill(); ctx.stroke();
-
-  ctx.fillStyle = COL.gold;
-  ctx.font = 'bold 14px ui-monospace, monospace';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText(
-    gs.phase === 'planning' ? 'PLANNING  ·  LOCK IN YOUR ACTION'
-      : gs.phase === 'resolution' ? '▶  SHOOTOUT'
-      : gs.phase.toUpperCase(),
-    cx - 248, 28,
-  );
-  ctx.textAlign = 'right';
-  ctx.fillStyle = COL.bone;
-  ctx.font = 'bold 22px ui-serif, Georgia, serif';
-  ctx.fillText(`ROUND ${gs.tick}`, cx + 248, 24);
-
-  const barX = cx - 248;
-  const barY = 58;
-  const barW = 496;
-  const barh = 22;
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.strokeStyle = 'rgba(224,176,74,0.4)';
-  roundRect(ctx, barX, barY, barW, barh, 4);
-  ctx.fill(); ctx.stroke();
-
-  let pct = 0;
-  if (gs.phase === 'planning' && gs.config.tickDuration > 0) {
-    pct = st.timeLeft / gs.config.tickDuration;
-  } else if (gs.phase === 'resolution') {
-    pct = 1;
-  }
-  const barColor = gs.phase === 'resolution' ? '#e03a3a' : pct < 0.3 ? '#e03a3a' : COL.goldBright;
-  ctx.fillStyle = barColor;
-  const fw = Math.max(0, barW * pct);
-  if (fw > 0) ctx.fillRect(barX + 1, barY + 1, Math.max(0, fw-2), barh - 2);
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-  ctx.lineWidth = 1;
-  for (let i = 1; i < 8; i++) {
-    const xx = barX + (barW * i) / 8;
-    ctx.beginPath();
-    ctx.moveTo(xx, barY + 3);
-    ctx.lineTo(xx, barY + barh - 3);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawTeamBadge(ctx: CanvasRenderingContext2D, x: number, y: number, label: string, count: number, main: string, dark: string) {
-  ctx.save();
-  ctx.fillStyle = 'rgba(15,8,4,0.92)';
-  ctx.strokeStyle = main;
-  ctx.lineWidth = 2;
-  roundRect(ctx, x, y, 300, 75, 8);
-  ctx.fill(); ctx.stroke();
-  ctx.fillStyle = dark;
-  ctx.fillRect(x, y, 6, 75);
-
-  ctx.save();
-  ctx.translate(x + 38, y + 37);
-  if (label === 'SHERIFFS') {
-    drawStar(ctx, 0, 0, 18, 8, COL.goldBright);
-  } else {
-    ctx.fillStyle = COL.bone;
-    ctx.beginPath();
-    ctx.arc(0, -2, 14, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillRect(-10, 8, 20, 8);
-    ctx.fillStyle = '#1a0e08';
-    ctx.beginPath(); ctx.arc(-5, -2, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(5, -2, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillRect(-1, 3, 2, 4);
-    ctx.fillRect(-8, 10, 2, 3);
-    ctx.fillRect(-3, 10, 2, 3);
-    ctx.fillRect(2, 10, 2, 3);
-    ctx.fillRect(7, 10, 2, 3);
-  }
-  ctx.restore();
-
-  ctx.fillStyle = main;
-  ctx.font = 'bold 13px ui-monospace, monospace';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText(label, x + 70, y + 14);
-
-  ctx.fillStyle = 'rgba(244,233,214,0.5)';
-  ctx.font = 'bold 9px ui-monospace';
-  ctx.fillText('STANDING', x + 70, y + 32);
-
-  ctx.fillStyle = COL.bone;
-  ctx.font = 'bold 42px ui-serif, Georgia, serif';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(String(count), x + 284, y + 42);
-
-  ctx.restore();
-}
-
+export type { Layout, Player };

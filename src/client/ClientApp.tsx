@@ -192,6 +192,8 @@ export default function ClientApp() {
         isEnded={true}
         winner={gameState.winner}
         playerTeam={myPlayer?.team || null}
+        gameState={gameState}
+        playerId={player.id}
         onPlayAgain={() => socket.emit('playAgain')}
         onEndSession={() => {
           socket.emit('leaveRoom');
@@ -211,6 +213,8 @@ export default function ClientApp() {
         playerTeam={myPlayer.team}
         playerName={player.name}
         deathTick={gameState?.tick}
+        gameState={gameState}
+        playerId={player.id}
       />
     );
   }

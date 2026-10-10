@@ -1,11 +1,17 @@
-import type { Team } from '../../shared/types';
+import { useEffect, useRef, useState } from 'react';
+import type { GameState, Team } from '../../shared/types';
+import { serverNow } from '../socket';
 import {
   WesternBackdrop,
   StarEmblem,
   SkullEmblem,
   WesternBtn,
-  westernStyles as S,
 } from '../components/WesternUI';
+import { computeAwards, mvp } from '../lib/awards';
+import LaneMiniMap from './components/LaneMiniMap';
+import EmoteBar from './components/EmoteBar';
+import { useRoundFeedback, type RoundRecap } from './components/useRoundFeedback';
+import './controller.css';
 
 interface DeadScreenProps {
   isEnded: boolean;
@@ -13,6 +19,8 @@ interface DeadScreenProps {
   playerTeam: Team | null;
   playerName?: string;
   deathTick?: number;
+  gameState?: GameState | null;
+  playerId?: string;
   onPlayAgain?: () => void;
   onEndSession?: () => void;
 }
@@ -23,135 +31,124 @@ export default function DeadScreen({
   playerTeam,
   playerName,
   deathTick,
+  gameState,
+  playerId,
   onPlayAgain,
   onEndSession,
 }: DeadScreenProps) {
-  const didWin = winner === playerTeam;
-  const isDraw = winner === 'draw';
+  const me = gameState?.players.find(p => p.id === playerId);
+  // Fires the death buzz (DeadScreen replaces the controller at impact).
+  const recap = useRoundFeedback(isEnded ? null : gameState ?? null, playerId ?? '');
+  const diedOn = me?.stats?.diedOnTick ?? deathTick;
+  const deathRecap = useRef<RoundRecap | null>(null);
+  if (recap && diedOn != null && recap.tick === diedOn) deathRecap.current = recap;
 
-  if (isEnded) {
-    return (
-      <WesternBackdrop dark>
-        <div
-          style={{
-            position: 'relative',
-            zIndex: 2,
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 30,
-            textAlign: 'center',
-            gap: 22,
-          }}
-        >
-          <div
-            style={{
-              ...S.paper,
-              padding: '40px 32px',
-              textAlign: 'center',
-              border: '3px solid #3e2417',
-              maxWidth: 420,
-              width: '100%',
-              transform: 'rotate(-0.5deg)',
-            }}
-          >
-            <div style={{ ...S.mono, fontSize: 12, color: '#6b4423', letterSpacing: 6, fontWeight: 'bold' }}>★ ★ ★</div>
-            <h1
-              style={{
-                ...S.title,
-                fontSize: 72,
-                margin: '12px 0 6px',
-                color: '#3e2417',
-                letterSpacing: 8,
-              }}
-            >
-              {isDraw ? 'DRAW' : didWin ? 'VICTORY' : 'DEFEAT'}
-            </h1>
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
-              {isDraw ? <StarEmblem size={56} color="#8a621e" /> : playerTeam === 'sheriffs' ? <StarEmblem size={56} color="#ffd875" /> : <SkullEmblem size={56} />}
-            </div>
-            <div style={{ ...S.serif, fontSize: 22, color: '#6b4423', marginTop: 12, fontStyle: 'italic' }}>
-              {isDraw
-                ? 'everyone\'s in the dirt'
-                : didWin
-                  ? (playerTeam === 'sheriffs' ? 'justice is served' : 'the law never stood a chance')
-                  : (winner === 'sheriffs' ? 'the sheriffs got ya' : 'the outlaws took the town')}
-            </div>
-          </div>
+  if (isEnded) return <EndedView winner={winner} playerTeam={playerTeam} gameState={gameState ?? null} playerId={playerId} onPlayAgain={onPlayAgain} onEndSession={onEndSession} />;
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 320 }}>
-            {onPlayAgain && <WesternBtn primary big onClick={onPlayAgain}>↺ PLAY AGAIN</WesternBtn>}
-            {onEndSession && <WesternBtn big onClick={onEndSession}>✕ LEAVE GAME</WesternBtn>}
-          </div>
-        </div>
-      </WesternBackdrop>
-    );
-  }
-
+  const killer = deathRecap.current?.lines.find(l => l.tone === 'bad')?.text;
   return (
     <WesternBackdrop dark>
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 30,
-          textAlign: 'center',
-          gap: 22,
-        }}
-      >
-        <div
-          style={{
-            width: 260,
-            padding: '30px 20px 40px',
-            borderRadius: '130px 130px 10px 10px',
-            background: 'linear-gradient(180deg, #7a7268 0%, #4a4238 100%)',
-            color: '#1a0e08',
-            border: '3px solid #1a0e08',
-            transform: 'rotate(-2deg)',
-            boxShadow: '0 10px 0 #1a0e08, 0 20px 40px rgba(0,0,0,0.7)',
-          }}
-        >
-          <div style={{ ...S.mono, fontSize: 11, letterSpacing: 4, fontWeight: 'bold', opacity: 0.7 }}>R.I.P.</div>
-          {(playerName || 'UNKNOWN').toUpperCase().split(' ').map((line, i) => (
-            <div key={i} style={{ ...S.title, fontSize: 30, color: '#1a0e08', marginTop: i === 0 ? 10 : 0, letterSpacing: 3 }}>
-              {line}
-            </div>
-          ))}
-          <div style={{ fontSize: 44, marginTop: 12 }}>💀</div>
-          {deathTick != null && (
-            <div style={{ ...S.serif, fontSize: 14, marginTop: 10, fontStyle: 'italic', opacity: 0.8 }}>
-              Gunned down · Round {deathTick}
-            </div>
-          )}
-        </div>
+      <main className="ds">
+        <section className="ds-grave">
+          <div className="ds-stone">
+            <span className="ds-rip">R.I.P.</span>
+            <strong>{(playerName || 'Unknown').toUpperCase()}</strong>
+            <span className="ds-when">{diedOn != null ? `Gunned down · Round ${diedOn}` : 'Gunned down'}</span>
+          </div>
+          <div className="ds-copy">
+            <h1>YOU'RE DEAD</h1>
+            <p>{killer ? `${killer}.` : 'Watch yer team carry on.'} Maybe they'll avenge ya.</p>
+          </div>
+        </section>
+        {gameState && <SpectateStatus gameState={gameState} />}
+        {gameState && playerId && playerTeam && <LaneMiniMap gameState={gameState} meId={playerId} team={playerTeam} showLocks={gameState.phase === 'planning'} />}
+        <EmoteBar label="Heckle from the grave" />
+        <div className="ds-spectating">★ SPECTATING ★</div>
+      </main>
+    </WesternBackdrop>
+  );
+}
 
-        <div
-          style={{
-            ...S.title,
-            fontSize: 42,
-            color: '#b53a3a',
-            letterSpacing: 6,
-            textShadow: '0 0 20px rgba(181,58,58,0.5)',
-          }}
-        >
-          YOU'RE DEAD
-        </div>
+function SpectateStatus({ gameState }: { gameState: GameState }) {
+  const [now, setNow] = useState(serverNow);
+  useEffect(() => { const t = setInterval(() => setNow(serverNow()), 100); return () => clearInterval(t); }, []);
+  const planning = gameState.phase === 'planning';
+  const left = planning ? Math.max(0, (gameState.tickStartTime ?? now) + gameState.config.tickDuration - now) : 0;
+  const alive = (t: Team) => gameState.players.filter(p => p.team === t && p.isAlive && p.slot >= 0).length;
+  return (
+    <section className="ds-status">
+      <span className="eyebrow">Round {gameState.tick}</span>
+      <strong>{planning ? 'Folks are aiming…' : 'The showdown'}</strong>
+      <span className="ds-alive">Standing: <b className="sheriffs">{alive('sheriffs')} sheriffs</b> · <b className="outlaws">{alive('outlaws')} outlaws</b></span>
+      <b className="ds-time">{planning ? `${(left / 1000).toFixed(1)}s` : 'DRAW'}</b>
+    </section>
+  );
+}
 
-        <div style={{ ...S.serif, fontSize: 16, color: '#d9cbb0', opacity: 0.75, maxWidth: 300, lineHeight: 1.5 }}>
-          Watch yer team carry on. Maybe they'll avenge ya. Maybe they won't.
-        </div>
+function EndedView({ winner, playerTeam, gameState, playerId, onPlayAgain, onEndSession }: {
+  winner: Team | 'draw' | null; playerTeam: Team | null; gameState: GameState | null; playerId?: string; onPlayAgain?: () => void; onEndSession?: () => void;
+}) {
+  const didWin = winner === playerTeam;
+  const isDraw = winner === 'draw';
+  const me = gameState?.players.find(p => p.id === playerId);
+  const s = me?.stats;
+  const awards = gameState ? computeAwards(gameState).filter(a => a.player.id === playerId) : [];
+  const isMvp = !!gameState && !!playerId && mvp(gameState)?.id === playerId;
+  const session = gameState?.session;
+  const accuracy = s && s.shots > 0 ? Math.round((s.hits / s.shots) * 100) : null;
+  const stats = s ? [
+    { k: 'Shots', v: s.shots },
+    { k: 'Hits', v: s.hits },
+    { k: 'Kills', v: s.kills },
+    { k: 'Blocked', v: s.blocked },
+    { k: 'Dmg taken', v: s.damageTaken },
+    { k: 'Accuracy', v: accuracy == null ? '—' : `${accuracy}%` },
+  ] : [];
+  return (
+    <WesternBackdrop dark>
+      <main className="ds ds-ended">
+        <section className={`ds-verdict ${isDraw ? 'draw' : didWin ? 'win' : 'loss'}`}>
+          <span className="ds-stars">★ ★ ★</span>
+          <h1>{isDraw ? 'DRAW' : didWin ? 'VICTORY' : 'DEFEAT'}</h1>
+          <div className="ds-emblem">{isDraw ? <StarEmblem size={40} color="#8a621e" /> : playerTeam === 'sheriffs' ? <StarEmblem size={40} color="#ffd875" /> : <SkullEmblem size={40} />}</div>
+          <p>
+            {isDraw
+              ? "everyone's in the dirt"
+              : didWin
+                ? (playerTeam === 'sheriffs' ? 'justice is served' : 'the law never stood a chance')
+                : (winner === 'sheriffs' ? 'the sheriffs got ya' : 'the outlaws took the town')}
+          </p>
+          {me && <span className="ds-survived">{me.isAlive ? `You survived with ${me.hp} ♥` : `You fell in round ${s?.diedOnTick ?? '?'}`}</span>}
+        </section>
 
-        <div style={{ ...S.mono, fontSize: 10, color: '#e0b04a', opacity: 0.6, letterSpacing: 3, marginTop: 8 }}>
-          ★ SPECTATING ★
+        {(awards.length > 0 || isMvp) && (
+          <section className="ds-awards">
+            {isMvp && <div className="ds-award mvp"><span>⭐</span><div><strong>MVP</strong><small>Top gun of the match</small></div></div>}
+            {awards.map(a => <div key={a.id} className="ds-award"><span>{a.icon}</span><div><strong>{a.title}</strong><small>{a.blurb}</small></div></div>)}
+          </section>
+        )}
+
+        {stats.length > 0 && (
+          <section className="ds-stats" aria-label="Your stats">
+            {stats.map(x => <div key={x.k}><b>{x.v}</b><span>{x.k}</span></div>)}
+          </section>
+        )}
+
+        {session && (
+          <section className="ds-session" aria-label="Session score">
+            <span className="eyebrow">Session</span>
+            <div><span className="sheriffs">Sheriffs <b>{session.sheriffs}</b></span><i>–</i><span className="outlaws"><b>{session.outlaws}</b> Outlaws</span></div>
+            {session.draws > 0 && <small>{session.draws} draw{session.draws > 1 ? 's' : ''}</small>}
+          </section>
+        )}
+
+        <EmoteBar label={didWin ? 'Rub it in' : 'Tip your hat'} />
+
+        <div className="ds-buttons">
+          {onPlayAgain && <WesternBtn primary big onClick={onPlayAgain}>↺ PLAY AGAIN</WesternBtn>}
+          {onEndSession && <WesternBtn big onClick={onEndSession}>✕ LEAVE GAME</WesternBtn>}
         </div>
-      </div>
+      </main>
     </WesternBackdrop>
   );
 }
