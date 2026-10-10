@@ -270,3 +270,18 @@
   .mm-cell.is-me .mm-avatar { box-shadow: 0 0 0 2px #ffd875; }
   .emote-bar.cooling .emote-cool { animation: none !important; width: 100%; opacity: .5; }
 }
+
+/* Outlaws: mirror the board so it matches the TV — sheriffs left, outlaws right. */
+.mm-head.flipped { flex-direction: row-reverse; }
+.mm-board.flipped .mm-cell.mine { grid-column: 5; flex-direction: row-reverse; text-align: right; }
+.mm-board.flipped .mm-cell.theirs { grid-column: 1; flex-direction: row; text-align: left; }
+.mm-board.flipped .mm-cell.mine .mm-meta { align-items: flex-end; }
+.mm-board.flipped .mm-cell.theirs .mm-meta { align-items: flex-start; }
+.mm-board.flipped .mm-cell.mine .mm-stats { flex-direction: row-reverse; }
+.mm-board.flipped .mm-cell.theirs .mm-stats { flex-direction: row; }
+.mm-board.flipped .mm-cell.mine .mm-badge--cover { right: auto; left: -4px; }
+.mm-board.flipped .mm-cell.theirs .mm-badge--cover { left: auto; right: -4px; }
+.mm-board.flipped .mm-barrel { grid-column: 4; }
+.mm-board.flipped .mm-barrel.theirs { grid-column: 2; }
+/* Outlaws fire to the left: put the shot column on the left too. */
+.ctl-grid.outlaws { grid-template-areas: "su mu" "ss cv" "sd md" "rl rl"; }

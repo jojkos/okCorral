@@ -12,7 +12,7 @@ export interface MapHighlight {
 interface Props {
   gameState: GameState;
   meId: string;
-  team: Team; // perspective: this team is always drawn on the left
+  team: Team; // whose perspective (YOU/THEM); sides match the TV: sheriffs left, outlaws right
   highlight?: MapHighlight | null;
   threatIds?: Set<string>;
   showLocks?: boolean;
@@ -59,6 +59,8 @@ function TokenCell({ p, me, mine, lane, threat, target, moveTarget, showLock, ba
 export default function LaneMiniMap({ gameState: gs, meId, team, highlight, threatIds, showLocks, footer }: Props) {
   const lanes = gs.config.slotsPerSide;
   const enemy = enemyOf(team);
+  // Mirror for outlaws so the phone map matches the TV (outlaws on the right).
+  const flipped = team === 'outlaws';
   const me = gs.players.find(p => p.id === meId);
   const myLane = me && me.slot >= 0 ? me.slot : -1;
   const rowH = lanes <= 3 ? 32 : lanes === 4 ? 30 : lanes === 5 ? 27 : lanes === 6 ? 24 : lanes === 7 ? 21 : 19;
@@ -80,17 +82,17 @@ export default function LaneMiniMap({ gameState: gs, meId, team, highlight, thre
   const y = (l: number) => l + 0.5;
   return (
     <section className="mm" aria-label="Board map">
-      <div className="mm-head">
+      <div className={`mm-head ${flipped ? 'flipped' : ''}`}>
         <span className={`mm-side ${team}`}>YOU · {teamLabel(team)}</span>
         <span className={`mm-side ${enemy}`}>THEM · {teamLabel(enemy)}</span>
       </div>
-      <div className={`mm-board ${rowH <= 21 ? 'compact' : ''}`} style={style}>
+      <div className={`mm-board ${rowH <= 21 ? 'compact' : ''} ${flipped ? 'flipped' : ''}`} style={style}>
         {cells}
         <div className="mm-gap" style={{ gridRow: `1 / span ${lanes}` }}>
           {Array.from({ length: lanes }, (_, l) => <span key={l} className={`mm-lane-no ${l === myLane ? 'mine' : ''}`} style={{ top: `${(y(l) / lanes) * 100}%` }}>{l + 1}</span>)}
           {hl?.kind === 'shot' && myLane >= 0 && (
             <svg className={`mm-aim ${hl.locked ? 'locked' : ''}`} viewBox={`0 0 10 ${lanes}`} preserveAspectRatio="none" aria-hidden>
-              <line x1="0" y1={y(myLane)} x2="10" y2={y(hl.lane)} vectorEffect="non-scaling-stroke" />
+              <line x1={flipped ? 10 : 0} y1={y(myLane)} x2={flipped ? 0 : 10} y2={y(hl.lane)} vectorEffect="non-scaling-stroke" />
             </svg>
           )}
         </div>

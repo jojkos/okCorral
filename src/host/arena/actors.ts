@@ -222,8 +222,7 @@ export function drawActionBadge(ctx: CanvasRenderingContext2D, L: Layout, x: num
   const color = override?.color ?? b.color;
   const pop = age < 0.25 ? easeOutBack(age / 0.25) : 1;
   const facing = facingOf(p.team);
-  let icon = b.icon;
-  if (p.currentAction.startsWith('SHOOT') && facing < 0) icon = p.currentAction === 'SHOOT_UP' ? '➚' : p.currentAction === 'SHOOT_DOWN' ? '➘' : '➤';
+  const icon = b.icon; // shot arrows are mirrored below for outlaws (they fire left)
   ctx.save();
   ctx.translate(x, headY);
   ctx.scale(pop * s, pop * s);

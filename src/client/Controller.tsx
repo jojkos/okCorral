@@ -164,7 +164,7 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
       <span>{!connected ? 'Reconnecting — hold tight' : !planning ? 'Watch the arena' : confirmed ? (confirmed === 'NONE' ? 'Action locked in' : `${labels[confirmed]} · locked in`) : pending ? `${labels[pending]} · sending…` : 'One action. Tap to lock it in.'}</span>
     </div>
 
-    <div className="ctl-grid">{tiles.map(({ action, icon: Icon, key, area, ...rest }) => {
+    <div className={`ctl-grid ${team}`}>{tiles.map(({ action, icon: Icon, key, area, ...rest }) => {
       const shot = 'shot' in rest;
       const note = noteFor(action, shot);
       const tileDisabled = disabled || note.off || (shot && ammo === 0) || (action === 'RELOAD' && ammo === 3);
@@ -174,7 +174,7 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
         className={`ctl-tile ${shot ? 'shot' : ''} ${action === 'RELOAD' ? 'reload' : ''} ${chosen === action ? 'selected' : ''} ${hover === action && !chosen ? 'aiming' : ''} tone-${note.tone}`}
         disabled={tileDisabled} onClick={() => { (sfx as any).playUiTap?.(); submit(action); }}
         onPointerEnter={enter} onPointerDown={enter} onPointerLeave={leave} onPointerCancel={leave} onFocus={enter} onBlur={leave}>
-        <Icon size={24} />
+        <Icon size={24} style={shot && team === 'outlaws' ? { transform: 'scaleX(-1)' } : undefined} />
         <span className="ctl-tile-text"><strong>{labels[action]}</strong>{note.text && <small>{note.tone === 'danger' && <AlertTriangle size={10} />}{note.text}</small>}</span>
         {chosen === action && <Check className="ctl-tile-check" size={16} />}
         <kbd>{key}</kbd>
