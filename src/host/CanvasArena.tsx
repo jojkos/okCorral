@@ -196,8 +196,10 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
         const label = b.hit === 'player' ? (b.lethal ? 'KILLED!' : '−1 ♥') : b.hit === 'barrel' ? 'BLOCKED' : b.hit === 'bullet' ? 'CLANG!' : 'MISS';
         const color = b.hit === 'player' ? '#ff6a55' : b.hit === 'barrel' ? '#8fe3c4' : b.hit === 'bullet' ? '#ffd875' : '#c8bfb2';
         const enemyX = teamX(L, b.fromTeam === 'sheriffs' ? 'outlaws' : 'sheriffs');
-        const fx = b.hit === 'miss' ? enemyX - facingOf(b.fromTeam) * 70 : g.toX;
-        const fy = b.hit === 'miss' ? L.feet[b.toSlot] - 130 * L.s : g.toY - 54;
+        // Labels pop on the street side of the target so they never cover its action badge.
+        const toStreet = -facingOf(b.fromTeam);
+        const fx = b.hit === 'miss' ? enemyX - facingOf(b.fromTeam) * 70 : b.hit === 'bullet' ? g.toX : g.toX + toStreet * 95 * L.s;
+        const fy = b.hit === 'miss' ? L.feet[b.toSlot] - 130 * L.s : b.hit === 'bullet' ? g.toY - 54 : g.toY - 8;
         st.floaters.push({ x: fx, y: fy, text: label, t: st.t, color, size: b.hit === 'player' ? 34 : 24, life: b.lethal ? 1.6 : 1.1 });
         if (motion) {
           const n = b.hit === 'barrel' ? 18 : b.hit === 'bullet' ? 22 : 14;

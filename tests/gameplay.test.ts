@@ -95,6 +95,9 @@ test('players keep the exact lane they picked in the lobby when the game starts'
   const st = m.resumeHost(room, 'host').state!;
   assert.deepEqual(st.players.map(p => [p.id, p.team, p.slot]), [['a', 'sheriffs', 4], ['b', 'outlaws', 2], ['c', 'sheriffs', 0]]);
   assert.equal(m.takeSeat('a', room, 'sheriffs', 1).success, false, 'locked mid-game');
+  st.players[0].slot = 3; // moved during the match
+  m.resetToLobby(room);
+  assert.equal(m.resumeHost(room, 'host').state!.players[0].slot, 4, 'back in the picked lane after the match');
   m.endSession(room);
 });
 

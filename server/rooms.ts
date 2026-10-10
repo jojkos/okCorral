@@ -36,6 +36,8 @@ interface Room {
   botTimers: NodeJS.Timeout[];
   // playerId -> last emote timestamp, for rate limiting.
   lastEmote: Map<string, number>;
+  // playerId -> lane picked in the lobby; restored when the match ends.
+  seats: Map<string, number>;
 }
 
 const IDLE_CLEANUP_MS = 5 * 60 * 1000; // 5 minutes with no connected sockets
@@ -141,6 +143,7 @@ export class RoomManager {
       sockets: new Set(),
       botTimers: [],
       lastEmote: new Map(),
+      seats: new Map(),
     };
     rooms.set(code, room);
     playerRooms.set(hostId, code);
@@ -424,7 +427,8 @@ export class RoomManager {
     room.state.winner = null;
     room.state.lastTickBullets = [];
 
-    // Everyone starts exactly where they sat in the lobby.
+    // Everyone starts exactly where they sat in the lobby (remembered for the next lobby).
+    room.seats = new Map(room.state.players.filter((p) => p.slot >= 0).map((p) => [p.id, p.slot]));
 
     this.startPlanningPhase(roomCode);
     return { success: true };
@@ -547,8 +551,10 @@ export class RoomManager {
     room.state.lastTickBullets = [];
     room.state.tickStartTime = null;
 
-    // Reset players but keep team assignments
+    // Reset players but keep team assignments and the lane each one picked.
     room.state.players.forEach((p) => {
+      const seat = room.seats.get(p.id);
+      if (seat !== undefined && seat < room.state.config.slotsPerSide) p.slot = seat;
       p.hp = 3;
       p.ammo = 1;
       p.isAlive = true;

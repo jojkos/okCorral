@@ -28,7 +28,7 @@ export function chooseBotAction(state: GameState, bot: Player): ActionType {
       const target = enemies.find((e) => e.slot === lane);
       if (!target) continue;
       const exposed = barrelHp(target.team, lane) === 0;
-      add(action, 4 + (exposed ? 3 : 0) + (target.ammo === 0 ? 1 : 0) + (target.hp === 1 ? 1.5 : 0));
+      add(action, 6 + (exposed ? 3 : 0) + (target.ammo === 0 ? 1 : 0) + (target.hp === 1 ? 2 : 0));
     }
   }
 
