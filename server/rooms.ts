@@ -277,6 +277,8 @@ export class RoomManager {
     const room = rooms.get(roomCode);
     if (!room) return { success: false, error: "Room not found" };
 
+    if (room.state.phase !== "lobby") return { success: false, error: "Teams are locked once the gunfight starts" };
+
     const player = room.state.players.find((p) => p.id === playerId);
     if (!player) return { success: false, error: "Player not found" };
 

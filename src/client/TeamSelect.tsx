@@ -88,7 +88,8 @@ export default function TeamSelect({ player, gameState, error, onSelectTeam, onL
             players={sheriffs}
             max={config.slotsPerSide}
             selected={isSheriff}
-            disabled={isOutlaw}
+            switching={isOutlaw}
+            meId={player.id}
             onPick={() => onSelectTeam('sheriffs')}
           />
           <TeamPickCard
@@ -96,7 +97,8 @@ export default function TeamSelect({ player, gameState, error, onSelectTeam, onL
             players={outlaws}
             max={config.slotsPerSide}
             selected={isOutlaw}
-            disabled={isSheriff}
+            switching={isSheriff}
+            meId={player.id}
             onPick={() => onSelectTeam('outlaws')}
           />
         </div>
@@ -124,21 +126,24 @@ function TeamPickCard({
   players,
   max,
   selected,
-  disabled,
+  switching,
+  meId,
   onPick,
 }: {
   team: Team;
   players: Player[];
   max: number;
   selected: boolean;
-  disabled: boolean;
+  /** Player is on the other team; tapping this card switches sides. */
+  switching: boolean;
+  meId: string;
   onPick: () => void;
 }) {
   const isSheriff = team === 'sheriffs';
   const main = isSheriff ? '#83c6c2' : '#ee987b';
   const dark = isSheriff ? '#254c59' : '#613d36';
   const isFull = players.length >= max && !selected;
-  const isDisabled = disabled || isFull;
+  const isDisabled = isFull;
 
   return (
     <button
@@ -179,7 +184,27 @@ function TeamPickCard({
             letterSpacing: 2,
           }}
         >
-          ✓ LOCKED IN
+          ✓ YOUR SIDE
+        </div>
+      )}
+      {switching && !isFull && (
+        <div
+          style={{
+            position: 'absolute',
+            top: -12,
+            right: 14,
+            ...S.mono,
+            fontSize: 10,
+            fontWeight: 'bold',
+            color: '#f4e9d6',
+            background: dark,
+            border: `1px solid ${main}`,
+            padding: '3px 10px',
+            borderRadius: 3,
+            letterSpacing: 2,
+          }}
+        >
+          ⇄ TAP TO SWITCH
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -211,6 +236,15 @@ function TeamPickCard({
           />
         ))}
       </div>
+      {players.length > 0 && (
+        <div style={{ ...S.mono, fontSize: 12, color: '#d9cbb0', letterSpacing: 1, lineHeight: 1.5 }}>
+          {players.map((p) => (
+            <span key={p.id} style={{ marginRight: 10, color: p.id === meId ? '#ffd875' : undefined, fontWeight: p.id === meId ? 'bold' : undefined }}>
+              {p.id === meId ? '★ YOU' : p.name}{p.isBot ? ' (bot)' : ''}
+            </span>
+          ))}
+        </div>
+      )}
       {isFull && (
         <div style={{ ...S.mono, fontSize: 11, color: '#ff8080', letterSpacing: 2, fontWeight: 'bold' }}>
           TEAM FULL

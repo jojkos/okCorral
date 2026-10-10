@@ -64,3 +64,19 @@ test('stats and session score are tallied; bots join only in lobby', () => {
   assert.equal(m.addBot(room, 'sheriffs').success, false, 'no bots mid-game');
   m.endSession(room);
 });
+
+test('players can switch sides in the lobby, not mid-game, and never into a full team', () => {
+  const io = { to: () => ({ emit: () => {} }) } as unknown as Server;
+  const m = new RoomManager(io);
+  const room = m.createRoom('host', { tickDuration: 4000, slotsPerSide: 2 });
+  m.joinRoom('a', room, 'Ada'); m.joinRoom('b', room, 'Billy');
+  assert.equal(m.selectTeam('a', room, 'outlaws').success, true);
+  assert.equal(m.selectTeam('a', room, 'sheriffs').success, true, 'switch back');
+  m.addBot(room, 'outlaws'); m.addBot(room, 'outlaws');
+  const before = structuredClone(m.resumeHost(room, 'host').state!.players.find(p => p.id === 'b')!);
+  assert.equal(m.selectTeam('b', room, 'outlaws').success, before.team === 'outlaws', 'full team rejects newcomers');
+  m.removeBot(room, 'outlaws');
+  assert.equal(m.startGame(room).success, true);
+  assert.equal(m.selectTeam('a', room, 'outlaws').success, false, 'locked mid-game');
+  m.endSession(room);
+});
