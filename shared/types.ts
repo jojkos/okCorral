@@ -135,6 +135,7 @@ export interface ServerToClientEvents {
   }) => void;
   gameEnded: (data: { winner: Team | "draw" }) => void;
   emote: (data: { playerId: string; emoji: Emote }) => void;
+  roomClosed: () => void;
 }
 
 // Socket events from client to server
@@ -146,6 +147,7 @@ export interface ClientToServerEvents {
   resumeHost: (data: { roomCode: string; hostId: string }) => void;
   joinRoom: (data: { roomCode: string; playerName: string; playerId: string }) => void;
   selectTeam: (team: Team) => void;
+  takeSeat: (data: { team: Team; slot: number }) => void;
   leaveTeam: () => void;
   lockAction: (action: ActionType) => void;
   startGame: () => void;

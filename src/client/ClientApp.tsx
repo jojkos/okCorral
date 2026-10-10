@@ -114,6 +114,14 @@ export default function ClientApp() {
       }
     });
 
+    // Host closed the room: forget it and go back to the start screen.
+    const closed = () => {
+      sessionStorage.removeItem(CLIENT_SESSION_KEY);
+      joinedRef.current = false;
+      window.location.href = '/';
+    };
+    socket.on('roomClosed', closed);
+
     socket.on('error', (message) => {
       setError(message);
       setTimeout(() => setError(null), 3000);
@@ -124,6 +132,7 @@ export default function ClientApp() {
       socket.off('joined');
       socket.off('gameState');
       socket.off('error');
+      socket.off('roomClosed', closed);
     };
   }, []);
 

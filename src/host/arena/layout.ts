@@ -21,10 +21,11 @@ export interface Layout {
 }
 
 export function slotLayout(n: number): Layout {
-  const top = 132;
+  const top = 142;
   const bottom = 872;
   const slotHeight = (bottom - top) / n;
-  const s = Math.max(0.6, Math.min(1.1, slotHeight / 132));
+  // Leave ~40px above each head so action badges never collide with the lane above / the HUD.
+  const s = Math.max(0.55, Math.min(1, slotHeight / 160));
   const ys = Array.from({ length: n }, (_, i) => top + slotHeight * (i + 0.5));
   const feet = ys.map((y) => y + slotHeight * 0.5 - 8 * s - 6);
   return {
@@ -39,6 +40,8 @@ export function slotLayout(n: number): Layout {
 
 export const teamX = (L: Layout, team: Team) => (team === 'sheriffs' ? L.sheriffX : L.outlawX);
 export const barrelX = (L: Layout, team: Team) => (team === 'sheriffs' ? L.sheriffBarrel : L.outlawBarrel);
+/** Lowest y a floating badge may sit at without hiding under the top HUD. */
+export const BADGE_MIN_Y = 140;
 export const facingOf = (team: Team): 1 | -1 => (team === 'sheriffs' ? 1 : -1);
 /** Height of the gun hand above the feet, in canvas px. */
 export const gunHeight = (L: Layout) => 64 * L.s;

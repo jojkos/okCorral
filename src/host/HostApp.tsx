@@ -4,6 +4,8 @@ import { useGameState } from '../lib/useGameState';
 import Lobby from './Lobby';
 import Arena from './Arena';
 import EndScreen from './EndScreen';
+import HostMenu from './components/HostMenu';
+import './host.css';
 import { startAmbient, stopAmbient, playVictory, playDefeat } from '../sound';
 
 const DEFAULT_CONFIG = { tickDuration: 4000, slotsPerSide: 5 };
@@ -56,7 +58,8 @@ export default function HostApp() {
     previousPhase.current = phase;
   }, [gameState?.phase, gameState?.winner]);
   useEffect(() => () => stopAmbient(), []);
-  if (gameState?.phase === 'ended') return <EndScreen gameState={gameState} />;
-  if (gameState && gameState.phase !== 'lobby') return <Arena gameState={gameState} />;
-  return <Lobby roomCode={gameState?.roomCode || roomCode} gameState={gameState} error={error} />;
+  const screen = gameState?.phase === 'ended' ? <EndScreen gameState={gameState} />
+    : gameState && gameState.phase !== 'lobby' ? <Arena gameState={gameState} />
+    : <Lobby roomCode={gameState?.roomCode || roomCode} gameState={gameState} error={error} />;
+  return <>{screen}{(gameState?.roomCode || roomCode) && <HostMenu phase={gameState?.phase} />}</>;
 }

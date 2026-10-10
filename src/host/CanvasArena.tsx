@@ -5,7 +5,7 @@ import { VOLLEY } from '../lib/presentation';
 import { roundHeadline } from '../lib/recap';
 import { reducedMotion } from '../components/GamePreferences';
 import * as sound from '../sound';
-import { CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, barrelX, clamp01, facingOf, gunHeight, rand, slotLayout, teamX } from './arena/layout';
+import { BADGE_MIN_Y, CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, barrelX, clamp01, facingOf, gunHeight, rand, slotLayout, teamX } from './arena/layout';
 import { drawBackground, drawBarrel, drawLanes, drawVignette } from './arena/scene';
 import { ActorAnim, ActorFrame, actorFrame, drawActionBadge, drawActor, drawIntentMarker, drawPlate, headY } from './arena/actors';
 import { Banner, BulletAnim, EmoteFx, Floater, FlyingHat, Impact, Muzzle, ParticleSystem, drawBanners, drawBullets, drawEmotes, drawFloaters, drawHats, drawImpacts, drawMuzzles, stepHats } from './arena/fx';
@@ -255,7 +255,7 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
       const L = slotLayout(gs.config.slotsPerSide);
       const f = st.frames[p.id];
       const x = f ? f.x : teamX(L, p.team);
-      const y = f ? headY(L, f) - 30 : L.ys[p.slot];
+      const y = Math.max(BADGE_MIN_Y + 20, f ? headY(L, f) - 30 : L.ys[p.slot]);
       st.emotes.push({ emoji, x: x + facingOf(p.team) * 40, y, t: st.t, name: p.name, team: p.team });
       if (st.emotes.length > 16) st.emotes.shift();
       cue('playEmotePop');
@@ -410,7 +410,7 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
   for (const p of seated) {
     if (!p.isAlive && !(elapsed >= 0 && before.get(p.id)?.isAlive)) continue;
     const f = st.frames[p.id];
-    const hy = headY(L, f);
+    const hy = Math.max(BADGE_MIN_Y, headY(L, f));
     if (gs.phase === 'planning' && p.isAlive) {
       drawIntentMarker(ctx, L, f.x, hy, p.actionLocked, st.t, motion);
     } else if (elapsed >= 0 && elapsed < VOLLEY.settle + 300 && before.get(p.id)?.isAlive) {

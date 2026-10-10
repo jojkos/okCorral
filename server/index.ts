@@ -5,6 +5,7 @@ import { RoomManager, publicState } from "./rooms.js";
 import {
   JoinRoomSchema,
   SelectTeamSchema,
+  TakeSeatSchema,
   LockActionSchema,
   GameConfigSchema,
 } from "../shared/validation.js";
@@ -179,6 +180,18 @@ io.on("connection", (socket) => {
     } catch (error) {
       socket.emit("error", "Invalid team");
     }
+  });
+
+  // Player picks a specific spot (lane) on a team
+  socket.on("takeSeat", (data) => {
+    const parsed = TakeSeatSchema.safeParse(data);
+    const playerId = socket.data.playerId as string | undefined;
+    if (!parsed.success || !playerId) return;
+    const roomCode = roomManager.getPlayerRoom(playerId);
+    if (!roomCode) return;
+    const result = roomManager.takeSeat(playerId, roomCode, parsed.data.team, parsed.data.slot);
+    if (result.success) roomManager.broadcastState(roomCode);
+    else socket.emit("error", result.error || "Cannot take that spot");
   });
 
   // Player leaves team

@@ -308,6 +308,21 @@ export class RoomManager {
     return { success: true };
   }
 
+  // Sit in a specific lane on a team (lobby only). The seat is kept at game start.
+  takeSeat(playerId: string, roomCode: string, team: Team, slot: number): { success: boolean; error?: string } {
+    const room = rooms.get(roomCode);
+    if (!room) return { success: false, error: "Room not found" };
+    if (room.state.phase !== "lobby") return { success: false, error: "Teams are locked once the gunfight starts" };
+    if (slot < 0 || slot >= room.state.config.slotsPerSide) return { success: false, error: "No such spot" };
+    const player = room.state.players.find((p) => p.id === playerId);
+    if (!player) return { success: false, error: "Player not found" };
+    const taken = room.state.players.find((p) => p.id !== playerId && p.team === team && p.slot === slot);
+    if (taken) return { success: false, error: `${taken.name} already has that spot` };
+    player.team = team;
+    player.slot = slot;
+    return { success: true };
+  }
+
   // Called when a player explicitly leaves or their socket disconnects during
   // lobby. Removes them entirely so team counts stay honest and the room can
   // go idle if empty. No-op during an active game to avoid mid-match surgery.
@@ -409,31 +424,7 @@ export class RoomManager {
     room.state.winner = null;
     room.state.lastTickBullets = [];
 
-    // Randomize player positions
-    const sheriffs = room.state.players.filter(
-      (p) => p.team === "sheriffs" && p.slot >= 0,
-    );
-    const outlaws = room.state.players.filter(
-      (p) => p.team === "outlaws" && p.slot >= 0,
-    );
-
-    // Fisher-Yates shuffle
-    const shuffle = (array: any[]) => {
-      for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-      }
-    };
-
-    shuffle(sheriffs);
-    shuffle(outlaws);
-
-    // Re-assign slots 0,1,2... based on shuffled order
-    // This compacts them if there are gaps, but that's fine for a fresh start?
-    // Actually, we should probably just swap their existing valid slots to maintain count?
-    // Let's just re-assign 0..N to the shuffled players.
-    sheriffs.forEach((p, i) => (p.slot = i));
-    outlaws.forEach((p, i) => (p.slot = i));
+    // Everyone starts exactly where they sat in the lobby.
 
     this.startPlanningPhase(roomCode);
     return { success: true };
@@ -582,6 +573,7 @@ export class RoomManager {
     if (room.idleCleanupTimer) clearTimeout(room.idleCleanupTimer);
     this.clearBots(room);
 
+    this.io.to(roomCode).emit("roomClosed");
     room.state.players.forEach((p) => playerRooms.delete(p.id));
     playerRooms.delete(room.hostId);
 

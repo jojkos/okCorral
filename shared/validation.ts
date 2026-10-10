@@ -12,6 +12,11 @@ export const JoinRoomSchema = z.object({
 
 export const SelectTeamSchema = z.enum(["sheriffs", "outlaws"]);
 
+export const TakeSeatSchema = z.object({
+  team: SelectTeamSchema,
+  slot: z.number().int().min(0).max(7),
+});
+
 export const LockActionSchema = ActionTypeSchema;
 
 export const GameConfigSchema = z.object({

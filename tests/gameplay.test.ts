@@ -80,3 +80,32 @@ test('players can switch sides in the lobby, not mid-game, and never into a full
   assert.equal(m.selectTeam('a', room, 'outlaws').success, false, 'locked mid-game');
   m.endSession(room);
 });
+
+test('players keep the exact lane they picked in the lobby when the game starts', () => {
+  const io = { to: () => ({ emit: () => {} }) } as unknown as Server;
+  const m = new RoomManager(io);
+  const room = m.createRoom('host', { tickDuration: 4000, slotsPerSide: 5 });
+  m.joinRoom('a', room, 'Ada'); m.joinRoom('b', room, 'Billy'); m.joinRoom('c', room, 'Cole');
+  assert.equal(m.takeSeat('a', room, 'sheriffs', 4).success, true);
+  assert.equal(m.takeSeat('b', room, 'outlaws', 2).success, true);
+  assert.equal(m.takeSeat('c', room, 'sheriffs', 4).success, false, 'spot already taken');
+  assert.equal(m.takeSeat('c', room, 'sheriffs', 9).success, false, 'off the board');
+  assert.equal(m.takeSeat('c', room, 'sheriffs', 0).success, true);
+  assert.equal(m.startGame(room).success, true);
+  const st = m.resumeHost(room, 'host').state!;
+  assert.deepEqual(st.players.map(p => [p.id, p.team, p.slot]), [['a', 'sheriffs', 4], ['b', 'outlaws', 2], ['c', 'sheriffs', 0]]);
+  assert.equal(m.takeSeat('a', room, 'sheriffs', 1).success, false, 'locked mid-game');
+  m.endSession(room);
+});
+
+test('bots actually move: dodging, chasing, leaving broken cover', () => {
+  const bot = mk('b', 'sheriffs', 2, { ammo: 1, isBot: true });
+  const gs = board([bot, mk('e', 'outlaws', 2, { ammo: 2 })]);
+  let moves = 0;
+  for (let i = 0; i < 500; i++) if (chooseBotAction(gs, bot).startsWith('MOVE')) moves++;
+  assert.ok(moves > 60, `bot under fire should dodge sometimes (moved ${moves}/500)`);
+  const far = board([mk('b2', 'sheriffs', 0, { ammo: 3, isBot: true }), mk('e2', 'outlaws', 4, { ammo: 0 })]);
+  let down = 0;
+  for (let i = 0; i < 300; i++) if (chooseBotAction(far, far.players[0]) === 'MOVE_DOWN') down++;
+  assert.ok(down > 120, `bot with nobody in reach should close the distance (moved down ${down}/300)`);
+});

@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { GameState, Player, PlayerStats } from '../../shared/types';
 import { socket } from '../socket';
+import { closeRoom } from './components/HostMenu';
 import { WesternBackdrop, StarEmblem, SkullEmblem, WesternBtn } from '../components/WesternUI';
 import CowboyPortrait from '../components/CowboyPortrait';
 import { computeAwards, mvp } from '../lib/awards';
@@ -17,19 +18,16 @@ export default function EndScreen({ gameState }: EndScreenProps) {
   const { winner, tick, players, barrels, session } = gameState;
 
   const handlePlayAgain = () => socket.emit('playAgain');
-  const handleEndSession = () => {
-    socket.emit('endSession');
-    sessionStorage.removeItem('okCorral-hostSession');
-    window.location.href = '/';
-  };
+  const handleEndSession = closeRoom;
 
   const seated = players.filter((p) => p.slot >= 0);
   const kills = seated.filter((p) => !p.isAlive).length;
   const barrelsStanding = barrels.filter((b) => b.hp > 0).length;
   const star = mvp(gameState);
   const awards = computeAwards(gameState, 5);
+  // Best performers first within each team.
   const rows = [...seated].sort((a, b) =>
-    a.team === b.team ? a.slot - b.slot : a.team === 'sheriffs' ? -1 : 1,
+    (b.stats?.kills ?? 0) - (a.stats?.kills ?? 0) || (b.stats?.hits ?? 0) - (a.stats?.hits ?? 0) || a.slot - b.slot,
   );
 
   let headline: string;
@@ -126,6 +124,11 @@ export default function EndScreen({ gameState }: EndScreenProps) {
             <h2 className="he-h2">Match Recap</h2>
             <div className="he-table-wrap">
               <table className="he-table">
+                <colgroup>
+                  <col className="he-col-name" />
+                  <col className="he-col-status" />
+                  <col span={5} className="he-col-num" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th scope="col">Gunslinger</th>
@@ -137,11 +140,23 @@ export default function EndScreen({ gameState }: EndScreenProps) {
                     <th scope="col" className="num">Acc.</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {rows.map((p) => (
-                    <RecapRow key={p.id} player={p} isMvp={p.id === star?.id} />
-                  ))}
-                </tbody>
+                {(['sheriffs', 'outlaws'] as const).map((team) => {
+                  const teamRows = rows.filter((p) => p.team === team);
+                  if (!teamRows.length) return null;
+                  return (
+                    <tbody key={team} className={`he-group he-group--${team}`}>
+                      <tr className="he-group__head">
+                        <th colSpan={7} scope="rowgroup">
+                          {team === 'sheriffs' ? '★ Sheriffs' : '☠ Outlaws'}
+                          {winner === team && <span className="he-group__won">Winners</span>}
+                        </th>
+                      </tr>
+                      {teamRows.map((p) => (
+                        <RecapRow key={p.id} player={p} isMvp={p.id === star?.id} />
+                      ))}
+                    </tbody>
+                  );
+                })}
               </table>
             </div>
           </div>
@@ -171,7 +186,7 @@ function RecapRow({ player: p, isMvp }: { player: Player; isMvp: boolean }) {
         </span>
       </th>
       <td>
-        <span className={p.isAlive ? 'he-alive' : 'he-dead'}>
+        <span className={`he-status ${p.isAlive ? 'he-alive' : 'he-dead'}`}>
           {p.isAlive ? '★ ' : '✝ '}
           {statusText(p)}
         </span>
