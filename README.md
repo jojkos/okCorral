@@ -77,3 +77,18 @@ The game is played in simultaneous turns.
 - `/src/host`: React components for the main game screen (Arena/Lobby).
 - `/server`: socket.io logic (`rooms.ts`, `actions.ts`).
 - `/shared`: Shared TypeScript types.
+
+## Presentation and synchronization
+
+The host and phones use a clock offset estimated from server replies. Action requests include the round number and its start timestamp, and the server acknowledges the confirmed choice. Reconnecting clients rejoin with their existing identity. State revisions prevent older messages from replacing newer rounds.
+
+Resolution uses a shared server timestamp: movement at 0–420 ms, volley at 420 ms, impacts and health reveal at 840 ms. This is presentation only; the existing combat resolver and planning/resolution durations are preserved.
+
+The phone controller supports W/S to move, A for cover, R to reload, Q/E for diagonal shots, and Space for a straight shot. Sound and reduced-motion controls are available in the bottom corner.
+
+### Verification
+
+- `npm run typecheck`
+- `npm test`
+- `npm run test:network` (requires a local server on port 3001, or set TEST_SERVER)
+- `npm run build`

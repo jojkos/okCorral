@@ -10,8 +10,8 @@ export const westernStyles = {
     color: '#2a1a0e',
   } as CSSProperties,
   wood: {
-    background: 'linear-gradient(180deg, #3a2414 0%, #1f140a 100%)',
-    border: '2px solid #6b4423',
+    background: 'linear-gradient(150deg, #263c45 0%, #172a33 100%)',
+    border: '1px solid #81948b55',
     borderRadius: 6,
     boxShadow: 'inset 0 1px 0 rgba(255,200,150,0.1), 0 6px 20px rgba(0,0,0,0.5)',
   } as CSSProperties,
@@ -28,20 +28,21 @@ export const westernStyles = {
 export function WesternBackdrop({ children, dark = false }: { children: ReactNode; dark?: boolean }) {
   return (
     <div
+      className="frontier-backdrop"
       style={{
         position: 'relative',
         width: '100%',
         minHeight: '100vh',
         background: dark
-          ? 'radial-gradient(ellipse at 50% 45%, #3a2414 0%, #1a0e08 60%, #0a0604 100%)'
-          : 'radial-gradient(ellipse at 50% 40%, #6b4423 0%, #3a2414 50%, #1a0e08 100%)',
+          ? 'radial-gradient(ellipse at 50% 45%, #2b4149 0%, #1a0e08 60%, #0a0604 100%)'
+          : 'radial-gradient(ellipse at 50% 40%, #6b4423 0%, #2b4149 50%, #1a0e08 100%)',
         overflow: 'hidden',
       }}
     >
       <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, opacity: 0.25, mixBlendMode: 'multiply', pointerEvents: 'none' }}>
         <defs>
           <pattern id="wu-planks" x="0" y="0" width="200" height="80" patternUnits="userSpaceOnUse">
-            <rect width="200" height="80" fill="#3a2414" />
+            <rect width="200" height="80" fill="#2b4149" />
             <line x1="0" y1="0" x2="200" y2="0" stroke="#1a0e08" strokeWidth="2" />
             <line x1="0" y1="80" x2="200" y2="80" stroke="#1a0e08" strokeWidth="2" />
             <line x1="70" y1="0" x2="80" y2="80" stroke="#0a0604" strokeWidth="1" />
@@ -107,11 +108,11 @@ export function MiniCowboy({ team, size = 32 }: { team: Team; size?: number }) {
     <svg width={size} height={size} viewBox="0 0 32 32">
       <ellipse cx="16" cy="9" rx="11" ry="2.5" fill={isSheriff ? '#5a3a1a' : '#1a0e08'} />
       <rect x="10" y="3" width="12" height="7" rx="1" fill={isSheriff ? '#5a3a1a' : '#1a0e08'} />
-      <rect x="10" y="7" width="12" height="1.5" fill={isSheriff ? '#ffd875' : '#6b1f1f'} />
+      <rect x="10" y="7" width="12" height="1.5" fill={isSheriff ? '#ffd875' : '#613d36'} />
       <circle cx="16" cy="15" r="6" fill="#e8c39a" />
       <rect x="10" y="12" width="12" height="3" fill="rgba(0,0,0,0.35)" />
-      <rect x="10" y="18" width="12" height="3" fill={isSheriff ? '#3a6fb5' : '#b53a3a'} />
-      <rect x="6" y="22" width="20" height="8" rx="2" fill={isSheriff ? '#3a6fb5' : '#b53a3a'} />
+      <rect x="10" y="18" width="12" height="3" fill={isSheriff ? '#83c6c2' : '#ee987b'} />
+      <rect x="6" y="22" width="20" height="8" rx="2" fill={isSheriff ? '#83c6c2' : '#ee987b'} />
       {isSheriff ? (
         <polygon points="10,26 12,25 13,27 11,28" fill="#ffd875" />
       ) : (
@@ -155,10 +156,10 @@ export function WesternBtn({
         letterSpacing: 2,
         textTransform: 'uppercase',
         background: disabled
-          ? 'linear-gradient(180deg, #3a2414aa 0%, #1f140aaa 100%)'
+          ? 'linear-gradient(180deg, #2b4149aa 0%, #182c35aa 100%)'
           : primary
             ? 'linear-gradient(180deg, #e0b04a 0%, #8a621e 100%)'
-            : 'linear-gradient(180deg, #3a2414 0%, #1f140a 100%)',
+            : 'linear-gradient(180deg, #2b4149 0%, #182c35 100%)',
         color: disabled ? '#6b4423' : primary ? '#1a0e08' : '#f4e9d6',
         border: `2px solid ${primary ? '#ffd875' : '#6b4423'}`,
         borderRadius: 4,

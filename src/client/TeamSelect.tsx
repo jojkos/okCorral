@@ -135,8 +135,8 @@ function TeamPickCard({
   onPick: () => void;
 }) {
   const isSheriff = team === 'sheriffs';
-  const main = isSheriff ? '#3a6fb5' : '#b53a3a';
-  const dark = isSheriff ? '#1f3d6b' : '#6b1f1f';
+  const main = isSheriff ? '#83c6c2' : '#ee987b';
+  const dark = isSheriff ? '#254c59' : '#613d36';
   const isFull = players.length >= max && !selected;
   const isDisabled = disabled || isFull;
 
@@ -153,7 +153,7 @@ function TeamPickCard({
         flexDirection: 'column',
         gap: 12,
         position: 'relative',
-        background: `linear-gradient(180deg, ${dark}66 0%, #1f140a 100%)`,
+        background: `linear-gradient(180deg, ${dark}66 0%, #182c35 100%)`,
         boxShadow: selected
           ? `0 0 30px ${main}66, inset 0 0 30px ${main}33`
           : 'inset 0 1px 0 rgba(255,200,150,0.1), 0 6px 20px rgba(0,0,0,0.5)',

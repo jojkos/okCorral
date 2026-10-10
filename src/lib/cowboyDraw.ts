@@ -1,12 +1,12 @@
 import type { Team } from '../../shared/types';
 
 export const COL = {
-  sheriff: '#3a6fb5',
-  sheriffDark: '#1f3d6b',
-  sheriffLight: '#8ab3de',
-  outlaw: '#b53a3a',
-  outlawDark: '#6b1f1f',
-  outlawLight: '#de8a8a',
+  sheriff: '#549d9d',
+  sheriffDark: '#285462',
+  sheriffLight: '#a6ddd2',
+  outlaw: '#b86248',
+  outlawDark: '#663931',
+  outlawLight: '#f0b398',
   wood: '#6b4423',
   woodDark: '#3e2417',
   woodLight: '#a06a3d',
@@ -79,109 +79,61 @@ export function drawRevolver(ctx: CanvasRenderingContext2D, x: number, y: number
   ctx.restore();
 }
 
-// drawCowboy is self-contained: caller sets up transform (position/scale).
-// time (seconds) drives idle sway; seed shifts sway phase per-character.
-export function drawCowboy(
-  ctx: CanvasRenderingContext2D,
-  team: Team,
-  facing: 1 | -1,
-  time: number,
-  seed = 0,
-) {
-  const isSheriff = team === 'sheriffs';
-  const primary = isSheriff ? COL.sheriff : COL.outlaw;
-  const primaryDark = isSheriff ? COL.sheriffDark : COL.outlawDark;
-  const primaryLight = isSheriff ? COL.sheriffLight : COL.outlawLight;
-
-  ctx.save();
-  ctx.scale(facing * 0.9, 0.9);
-
-  const sway = Math.sin(time * 1.5 + seed) * 2;
-  ctx.translate(0, sway);
-
-  // Legs + boots
-  ctx.fillStyle = '#3a2818';
-  ctx.fillRect(-14, 22, 11, 38);
-  ctx.fillRect(3, 22, 11, 38);
-  ctx.fillStyle = '#1a0e08';
-  ctx.fillRect(-16, 54, 15, 10);
-  ctx.fillRect(1, 54, 15, 10);
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.fillRect(-16, 54, 15, 2);
-  ctx.fillRect(1, 54, 15, 2);
-
-  // Torso + vest
-  ctx.fillStyle = primaryDark;
-  roundRect(ctx, -22, -12, 44, 40, 6);
-  ctx.fill();
-  ctx.fillStyle = primary;
-  roundRect(ctx, -18, -10, 36, 32, 5);
-  ctx.fill();
-  // Belt + buckle
-  ctx.fillStyle = '#2a1a10';
-  ctx.fillRect(-22, 22, 44, 6);
-  ctx.fillStyle = COL.gold;
-  ctx.fillRect(-4, 22, 8, 6);
-
-  // Badge or bandana-X
-  if (isSheriff) {
-    drawStar(ctx, -8, 0, 6, 3, COL.goldBright);
-  } else {
-    ctx.strokeStyle = COL.bone;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-12, -4); ctx.lineTo(-2, 6);
-    ctx.moveTo(-2, -4); ctx.lineTo(-12, 6);
-    ctx.stroke();
+// Articulated vector character. Poses are presentation-only.
+export interface CowboyPose { walk?: number; recoil?: number; reload?: number; cover?: number }
+export function drawCowboy(ctx: CanvasRenderingContext2D, team: Team, facing: 1 | -1, time: number, seed = 0, pose: CowboyPose = {}) {
+  const law = team === 'sheriffs';
+  const coat = law ? COL.sheriff : COL.outlaw;
+  const dark = law ? COL.sheriffDark : COL.outlawDark;
+  const light = law ? COL.sheriffLight : COL.outlawLight;
+  const skin = ['#d9a87c', '#bc865e', '#e5b78e'][Math.abs(seed) % 3];
+  const walk = pose.walk || 0, recoil = pose.recoil || 0, reload = pose.reload || 0;
+  const breath = Math.sin(time * 2 + seed) * .8;
+  const path = (points: number[][], fill: string) => {
+    ctx.fillStyle = fill; ctx.beginPath(); points.forEach(([x,y], i) => i ? ctx.lineTo(x,y) : ctx.moveTo(x,y)); ctx.closePath(); ctx.fill();
+  };
+  ctx.save(); ctx.scale(facing * .95, .95); ctx.translate(-recoil * 6, breath - Math.abs(walk) * 3);
+  // Back leg and front leg take alternating steps; boots have a heel and toe.
+  for (const [x, step] of [[-11,walk],[8,-walk]]) {
+    ctx.save(); ctx.translate(x, 24); ctx.rotate(step * .26);
+    roundRect(ctx,-6,0,13,30,4); ctx.fillStyle='#2b3033'; ctx.fill();
+    ctx.fillStyle='#475052'; ctx.fillRect(-5,3,3,23);
+    path([[-7,26],[7,26],[8,37],[15,40],[15,45],[-8,45]],'#1a252b');
+    ctx.fillStyle='#c58a52'; ctx.fillRect(-8,43,23,2); ctx.restore();
   }
-
-  // Front arm + gun hand
-  ctx.fillStyle = primaryDark;
-  ctx.fillRect(6, -6, 26, 10);
-  ctx.fillStyle = '#d9b38c';
-  ctx.fillRect(30, -7, 8, 12);
-  drawRevolver(ctx, 34, -2);
-
-  // Rear arm
-  ctx.fillStyle = primary;
-  ctx.fillRect(-26, -6, 18, 10);
-
-  // Neck
-  ctx.fillStyle = '#d9b38c';
-  ctx.fillRect(-6, -22, 12, 12);
-
-  // Head
-  ctx.fillStyle = '#e8c39a';
-  ctx.beginPath();
-  ctx.arc(0, -30, 14, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.fillRect(-14, -34, 28, 8);
-  ctx.fillStyle = '#1a0e08';
-  ctx.fillRect(-6, -29, 3, 1.5);
-  ctx.fillRect(3, -29, 3, 1.5);
-  if (!isSheriff) {
-    ctx.fillStyle = '#1a0e08';
-    ctx.fillRect(-6, -22, 12, 2);
-    ctx.fillRect(-7, -22, 2, 3);
-    ctx.fillRect(5, -22, 2, 3);
-  }
-
-  // Bandana
-  ctx.fillStyle = primary;
-  ctx.fillRect(-9, -20, 18, 5);
-  ctx.fillStyle = primaryLight;
-  ctx.fillRect(-9, -20, 18, 1);
-
-  // Hat
-  ctx.fillStyle = isSheriff ? '#5a3a1a' : '#1a0e08';
-  ctx.beginPath();
-  ctx.ellipse(0, -40, 22, 5, 0, 0, Math.PI * 2);
-  ctx.fill();
-  roundRect(ctx, -10, -54, 20, 14, 3);
-  ctx.fill();
-  ctx.fillStyle = isSheriff ? COL.goldBright : COL.outlawDark;
-  ctx.fillRect(-10, -44, 20, 2);
-
+  // Long coat tails, swinging with the step.
+  path([[-22,-12],[18,-12],[27+walk*3,43],[8,39],[0,24],[-12,42],[-29-walk*3,39]],dark);
+  path([[-21,-10],[19,-10],[20,24],[-21,25]],coat);
+  path([[-9,-12],[9,-12],[9,24],[-8,24]],'#ecd8b1');
+  path([[-21,-13],[-8,-15],[-3,6],[-15,-1]],light);
+  path([[9,-14],[20,-10],[13,7],[4,1]],dark);
+  for(let i=0;i<3;i++){ctx.fillStyle='#7f6346';ctx.beginPath();ctx.arc(2,3+i*7,1.5,0,Math.PI*2);ctx.fill();}
+  ctx.fillStyle='#332b28';ctx.fillRect(-22,21,44,7);ctx.fillStyle=COL.gold;ctx.fillRect(-4,21,9,7);ctx.fillStyle='#755239';ctx.fillRect(-2,23,5,3);
+  path([[13,27],[23,26],[22,40],[14,43]],'#624636');
+  // Back arm at the belt.
+  ctx.save();ctx.translate(-20,-6);ctx.rotate(-.15+Math.sin(time*2+seed)*.025);
+  roundRect(ctx,-8,0,12,27,5);ctx.fillStyle=dark;ctx.fill();ctx.fillStyle=skin;roundRect(ctx,-7,22,10,9,3);ctx.fill();ctx.restore();
+  // Gun arm: recoil pivots at shoulder; reloading lowers the revolver.
+  ctx.save();ctx.translate(14,-5);ctx.rotate(-recoil*.3+reload*.95);
+  roundRect(ctx,0,-5,25,12,5);ctx.fillStyle=coat;ctx.fill();ctx.fillStyle=light;ctx.fillRect(3,-5,19,2);
+  roundRect(ctx,23,-4,10,10,3);ctx.fillStyle=skin;ctx.fill();drawRevolver(ctx,30,0);ctx.restore();
+  // Neck, scarf, angular face, ear and hat shadow.
+  ctx.fillStyle=skin;ctx.fillRect(-6,-23,12,12);
+  roundRect(ctx,-12,-43,25,27,8);ctx.fillStyle=skin;ctx.fill();
+  path([[-12,-34],[-5,-32],[-5,-20],[7,-16],[-6,-16],[-13,-22]],'#916348');
+  ctx.fillStyle=skin;ctx.beginPath();ctx.ellipse(13,-29,4,5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#2c2926';ctx.fillRect(-9,-35,23,7);ctx.fillStyle='#f6e4c4';ctx.fillRect(4,-29,5,2);
+  if(law){path([[-5,-22],[10,-23],[7,-19],[-4,-19]],'#714735');}
+  else {path([[-11,-25],[11,-24],[10,-15],[-9,-15]],'#332a2b');ctx.fillStyle='#d19576';ctx.fillRect(4,-25,5,2);}
+  path([[-10,-16],[10,-15],[3,-8],[-9,-10]],light);
+  path([[-8,-12],[-13,-7],[-9,6],[-4,-7]],coat);
+  // Broad curved brim, shaped crown, leather band, warm rim light.
+  ctx.fillStyle=law?'#ad8253':'#313338';ctx.beginPath();ctx.ellipse(0,-42,29,6,-.08,0,Math.PI*2);ctx.fill();
+  path([[-17,-43],[-14,-61],[-5,-65],[2,-60],[10,-64],[17,-44]],law?'#c29964':'#464449');
+  path([[-14,-60],[-5,-64],[-3,-45],[-17,-44]],law?'#967044':'#252e34');
+  ctx.fillStyle=law?'#654a36':'#af674a';ctx.fillRect(-16,-47,33,5);
+  ctx.strokeStyle=law?'#ecd09a':'#b6a08c';ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(0,-42,29,6,-.08,0,Math.PI);ctx.stroke();
+  if(law)drawStar(ctx,-12,0,6,2.8,COL.goldBright);
+  else {ctx.strokeStyle='#f2d3a8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-15,-2);ctx.lineTo(-7,5);ctx.moveTo(-7,-2);ctx.lineTo(-15,5);ctx.stroke();}
   ctx.restore();
 }

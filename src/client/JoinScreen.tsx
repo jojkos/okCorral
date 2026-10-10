@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { WesternBackdrop, WesternBtn, westernStyles as S } from '../components/WesternUI';
+import { StarEmblem, WesternBackdrop, WesternBtn, westernStyles as S } from '../components/WesternUI';
 
 interface JoinScreenProps {
   initialCode: string;
@@ -33,12 +33,12 @@ export default function JoinScreen({ initialCode, initialName, error, onJoin }: 
 
   return (
     <WesternBackdrop>
-      <form
+      <form className="join-form"
         onSubmit={handleSubmit}
         style={{ position: 'relative', zIndex: 2, minHeight: '100vh', display: 'flex', flexDirection: 'column', padding: 24, gap: 20 }}
       >
         <div style={{ textAlign: 'center', marginTop: 30 }}>
-          <div style={{ fontSize: 72, lineHeight: 1 }}>🤠</div>
+          <StarEmblem size={64} />
           <h1 style={{ ...S.title, fontSize: 36, margin: '12px 0 4px' }}>RIDE IN</h1>
           <div style={{ ...S.serif, color: '#d9cbb0', fontSize: 16, opacity: 0.9 }}>Stake yer claim on a slot</div>
         </div>

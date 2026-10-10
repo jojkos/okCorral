@@ -62,6 +62,7 @@ function createInitialState(roomCode: string, config: GameConfig): GameState {
 
   return {
     roomCode,
+    revision: 0,
     phase: "lobby",
     tick: 0,
     config,
@@ -294,6 +295,18 @@ export class RoomManager {
     }
   }
 
+  submitAction(playerId: string, roomCode: string, action: ActionType, tick: number, startedAt: number) {
+    const room = rooms.get(roomCode);
+    const player = room?.state.players.find(p => p.id === playerId);
+    if (!room || room.state.phase !== 'planning' || room.state.tick !== tick || room.state.tickStartTime !== startedAt) {
+      return { accepted: false, tick, reason: 'That round has finished.' };
+    }
+    if (!player || !player.isAlive) return { accepted: false, tick, reason: 'Player unavailable.' };
+    if (!player.actionLocked) this.lockAction(playerId, roomCode, action);
+    return { accepted: player.actionLocked, tick, action: player.currentAction,
+      reason: player.actionLocked ? undefined : 'That action is unavailable.' };
+  }
+
   lockAction(playerId: string, roomCode: string, action: ActionType): void {
     const room = rooms.get(roomCode);
     if (!room || room.state.phase !== "planning") return;
@@ -394,6 +407,8 @@ export class RoomManager {
     const room = rooms.get(roomCode);
     if (!room) return;
 
+    room.state.resolutionFrom = undefined;
+    room.state.resolutionStartedAt = undefined;
     room.state.phase = "planning";
     room.state.tick++;
     room.state.pendingActions = [];
@@ -423,6 +438,9 @@ export class RoomManager {
     const room = rooms.get(roomCode);
     if (!room) return;
 
+    room.state.resolutionFrom = { players: structuredClone(room.state.players), barrels: structuredClone(room.state.barrels) };
+    room.state.resolutionStartedAt = Date.now();
+    room.state.revision++;
     room.state.phase = "resolution";
 
     // Resolve all actions
@@ -486,6 +504,8 @@ export class RoomManager {
     if (room.continuationTimer) { clearTimeout(room.continuationTimer); room.continuationTimer = null; }
     if (room.gameEndTimer) { clearTimeout(room.gameEndTimer); room.gameEndTimer = null; }
 
+    room.state.resolutionFrom = undefined;
+    room.state.resolutionStartedAt = undefined;
     room.state.phase = "lobby";
     room.state.tick = 0;
     room.state.winner = null;
@@ -582,6 +602,7 @@ export class RoomManager {
   broadcastState(roomCode: string): void {
     const room = rooms.get(roomCode);
     if (!room) return;
+    room.state.revision++;
     this.io.to(roomCode).emit("gameState", room.state);
   }
 }

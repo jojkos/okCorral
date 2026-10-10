@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Team } from '../../shared/types';
+import { reducedMotion } from './GamePreferences';
 import { drawCowboy } from '../lib/cowboyDraw';
 
 // The cowboy is drawn around origin (0,0) with bounds roughly
@@ -30,7 +31,7 @@ export default function CowboyPortrait({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
+    const dpr = Math.min(2, globalThis.devicePixelRatio || 1) * Math.max(1, size / LOGICAL_H);
     canvas.width = LOGICAL_W * dpr;
     canvas.height = LOGICAL_H * dpr;
     const ctx = canvas.getContext('2d');
@@ -48,13 +49,13 @@ export default function CowboyPortrait({
       ctx.beginPath();
       ctx.ellipse(0, 68, 32, 6, 0, 0, Math.PI * 2);
       ctx.fill();
-      drawCowboy(ctx, team, facing, animated ? t / 1000 : 0, seed);
+      drawCowboy(ctx, team, facing, animated && !reducedMotion() ? t / 1000 : 0, seed);
       ctx.restore();
       if (animated) rafRef.current = requestAnimationFrame(render);
     };
     rafRef.current = requestAnimationFrame(render);
     return () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); };
-  }, [team, facing, seed, animated]);
+  }, [team, facing, seed, animated, size]);
 
   const height = size;
   const width = Math.round((LOGICAL_W / LOGICAL_H) * size);

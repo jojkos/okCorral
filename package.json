@@ -8,7 +8,10 @@
     "dev:server": "tsx watch server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "tsx server/index.ts"
+    "start": "tsx server/index.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
+    "test": "node --import tsx --test tests/sync.test.ts",
+    "test:network": "node --import tsx tests/network.integration.ts"
   },
   "dependencies": {
     "tsx": "^4.6.0",

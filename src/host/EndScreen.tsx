@@ -65,7 +65,7 @@ export default function EndScreen({ gameState }: EndScreenProps) {
         );
       })}
 
-      <div
+      <div className="end-layout"
         style={{
           position: 'relative',
           zIndex: 2,
@@ -78,7 +78,7 @@ export default function EndScreen({ gameState }: EndScreenProps) {
           gap: 28,
         }}
       >
-        <div
+        <div className="end-paper"
           style={{
             ...S.paper,
             padding: '50px 80px',
@@ -92,7 +92,7 @@ export default function EndScreen({ gameState }: EndScreenProps) {
           <div style={{ ...S.serif, fontSize: 28, color: '#6b4423', letterSpacing: 4, marginTop: 10 }}>
             {winner === 'draw' ? 'BY ORDER OF NO ONE' : 'BY ORDER OF THE MARSHAL'}
           </div>
-          <h1
+          <h1 className="end-title"
             style={{
               ...S.title,
               fontSize: 140,
@@ -106,7 +106,7 @@ export default function EndScreen({ gameState }: EndScreenProps) {
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24, marginTop: 16 }}>
             {emblem}
-            <div style={{ ...S.serif, fontSize: 48, color: teamColor, letterSpacing: 3 }}>{headline}</div>
+            <div className="end-team" style={{ ...S.serif, fontSize: 48, color: teamColor, letterSpacing: 3 }}>{headline}</div>
             {emblem}
           </div>
           <div style={{ ...S.serif, fontSize: 22, color: '#6b4423', marginTop: 10, fontStyle: 'italic' }}>{flavor}</div>

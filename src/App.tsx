@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import GamePreferences from './components/GamePreferences';
+import { Monitor, Smartphone, ArrowUpRight } from 'lucide-react';
+import CowboyPortrait from './components/CowboyPortrait';
 import HostApp from './host/HostApp';
 import ClientApp from './client/ClientApp';
 
@@ -52,47 +55,26 @@ export default function App() {
   };
 
   if (mode === 'host') {
-    return <HostApp />;
+    return <><GamePreferences /><HostApp /></>;
   }
 
   if (mode === 'client') {
-    return <ClientApp />;
+    return <><GamePreferences /><ClientApp /></>;
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="w-full max-w-3xl text-center">
-        <h1 className="text-5xl md:text-6xl uppercase text-amber-700">OK Corral</h1>
-        <p className="mt-2 text-sm tracking-[0.3em] uppercase text-neutral-500">
-          Digital Gunfight
-        </p>
-
-        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <button
-            onClick={handleHostClick}
-            className="western-card p-8 md:p-10 text-center transition-transform hover:-translate-y-1"
-            style={{ backgroundColor: '#C85F20', color: '#F8F1E2', borderColor: '#5A3A1B', boxShadow: '6px 6px 0px 0px #3E2612' }}
-          >
-            <div className="text-5xl mb-4">📺</div>
-            <div className="text-xl uppercase tracking-widest">Start Hosting</div>
-            <div className="mt-2 text-sm opacity-80">For the TV / Big Screen</div>
-          </button>
-
-          <button
-            onClick={handleClientClick}
-            className="western-card p-8 md:p-10 text-center transition-transform hover:-translate-y-1"
-            style={{ backgroundColor: '#1F8EA4', color: '#F8F1E2', borderColor: '#0C4A55', boxShadow: '6px 6px 0px 0px #08323A' }}
-          >
-            <div className="text-5xl mb-4">🎮</div>
-            <div className="text-xl uppercase tracking-widest">Join Game</div>
-            <div className="mt-2 text-sm opacity-80">Join with Mobile</div>
-          </button>
-        </div>
-
-        <p className="mt-10 text-xs text-neutral-500">
-          Host on a big screen, players join on phones
-        </p>
+  return <main className="landing-screen">
+    <GamePreferences />
+    <header className="landing-top"><span className="brand-mark">OC /</span><span>A GAME OF NERVE & TIMING</span><span>EST. 1881</span></header>
+    <div className="landing-content">
+      <div className="eyebrow">GATHER YOUR POSSE</div>
+      <h1>O.K.<br /><span>CORRAL</span></h1>
+      <p className="landing-tagline">One town. Two sides.<br />Everybody draws at once.</p>
+      <div className="landing-actions">
+        <button className="launch-card host-card" onClick={handleHostClick}><Monitor size={25} /><span><strong>Host a showdown</strong><small>Put the arena on your big screen</small></span><ArrowUpRight size={22} /></button>
+        <button className="launch-card join-card" onClick={handleClientClick}><Smartphone size={25} /><span><strong>Join the posse</strong><small>Your phone is your controller</small></span><ArrowUpRight size={22} /></button>
       </div>
+      <div className="landing-footer"><span>SHERIFFS vs OUTLAWS</span><span>PHONES IN HAND. EYES ON THE ARENA.</span></div>
     </div>
-  );
+    <div className="hero-cowboys" aria-hidden="true"><CowboyPortrait team="sheriffs" size={380} /><CowboyPortrait team="outlaws" size={380} facing={-1} seed={7} /></div>
+  </main>;
 }

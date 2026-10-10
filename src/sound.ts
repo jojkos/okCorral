@@ -15,7 +15,7 @@ const getCtor = (): Ctor | null => {
 
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
-let muted = false;
+let muted = localStorage.getItem('okCorral-muted') === 'true';
 let userVolume = 0.7;
 
 // Ambient bed
@@ -58,6 +58,7 @@ hookFirstGesture();
 
 export function setMuted(next: boolean): void {
   muted = next;
+  localStorage.setItem('okCorral-muted', String(next));
   if (masterGain) masterGain.gain.value = muted ? 0 : userVolume;
 }
 export function isMuted(): boolean { return muted; }

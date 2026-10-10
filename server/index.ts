@@ -75,17 +75,34 @@ function socketRoom(socket: { data: { playerId?: string; hostId?: string; roomCo
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
+  socket.on('syncClock', reply => { if (typeof reply === 'function') reply(Date.now()); });
+  socket.on('requestState', () => {
+    const room = socketRoom(socket);
+    if (room) roomManager.broadcastState(room);
+  });
+  socket.on('submitAction', (data, reply) => {
+    if (typeof reply !== 'function') return;
+    const parsed = LockActionSchema.safeParse(data?.action);
+    const room = socketRoom(socket);
+    if (!parsed.success || !Number.isInteger(data?.tick) || !Number.isFinite(data?.startedAt) || !room || !socket.data.playerId) {
+      reply({ accepted: false, tick: data?.tick, reason: 'Reconnect to your room.' });
+      return;
+    }
+    reply(roomManager.submitAction(socket.data.playerId, room, parsed.data, data.tick, data.startedAt));
+  });
+
   // Host creates a room
   socket.on("createRoom", (data: { config: GameConfig; hostId: string }) => {
     try {
       const validConfig = GameConfigSchema.parse(data.config);
       const hostId = data.hostId || socket.id;
       socket.data.hostId = hostId;
-      const roomCode = roomManager.createRoom(hostId, validConfig);
+      const roomCode = roomManager.getPlayerRoom(hostId) || roomManager.createRoom(hostId, validConfig);
       socket.join(roomCode);
       socket.data.roomCode = roomCode;
       roomManager.noteSocketJoined(roomCode, socket.id);
       socket.emit("roomCreated", { roomCode });
+      roomManager.broadcastState(roomCode);
       console.log(`Room created: ${roomCode} by ${socket.id}`);
     } catch (error) {
       socket.emit("error", "Invalid configuration");

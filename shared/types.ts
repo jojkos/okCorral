@@ -59,6 +59,9 @@ export interface GameConfig {
 // Full game state
 export interface GameState {
   roomCode: string;
+  revision: number;
+  resolutionStartedAt?: number;
+  resolutionFrom?: { players: Player[]; barrels: Barrel[] };
   phase: GamePhase;
   tick: number;
   config: GameConfig;
@@ -103,6 +106,9 @@ export interface ServerToClientEvents {
 
 // Socket events from client to server
 export interface ClientToServerEvents {
+  syncClock: (reply: (serverTime: number) => void) => void;
+  requestState: () => void;
+  submitAction: (data: { action: ActionType; tick: number; startedAt: number }, reply: (result: { accepted: boolean; action?: ActionType; tick: number; reason?: string }) => void) => void;
   createRoom: (data: { config: GameConfig; hostId: string }) => void;
   resumeHost: (data: { roomCode: string; hostId: string }) => void;
   joinRoom: (data: { roomCode: string; playerName: string; playerId: string }) => void;

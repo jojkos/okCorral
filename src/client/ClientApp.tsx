@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { socket, connectSocket } from '../socket';
-import type { GameState, ClientPlayer } from '../../shared/types';
+import { useGameState } from '../lib/useGameState';
+import type { ClientPlayer } from '../../shared/types';
 import JoinScreen from './JoinScreen';
 import TeamSelect from './TeamSelect';
 import Controller from './Controller';
@@ -25,7 +26,8 @@ export default function ClientApp() {
   const [connected, setConnected] = useState(false);
   const [player, setPlayer] = useState<ClientPlayer | null>(null);
   const [roomCode, setRoomCode] = useState<string | null>(null);
-  const [gameState, setGameState] = useState<GameState | null>(null);
+  const gameState = useGameState();
+  const joinedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<ClientSession | null>(null);
   const autoJoinAttempted = useRef(false);
@@ -75,7 +77,15 @@ export default function ClientApp() {
       setError('Failed to connect to server');
     });
 
+    const reconnect = () => {
+      setConnected(true);
+      if (joinedRef.current && sessionRef.current) socket.emit('joinRoom', sessionRef.current);
+    };
+    socket.on('connect', reconnect);
+
     socket.on('joined', ({ player: joinedPlayer, roomCode: code }) => {
+      joinedRef.current = true;
+      playerIdRef.current = joinedPlayer.id;
       setPlayer(joinedPlayer);
       setRoomCode(code);
       const nextSession: ClientSession = {
@@ -83,13 +93,14 @@ export default function ClientApp() {
         playerId: joinedPlayer.id,
         playerName: sessionRef.current?.playerName || joinedPlayer.name,
       };
+      sessionRef.current = nextSession;
       setSession(nextSession);
       sessionStorage.setItem(CLIENT_SESSION_KEY, JSON.stringify(nextSession));
       setError(null);
     });
 
     socket.on('gameState', (state) => {
-      setGameState(state);
+
       const currentPlayerId = playerIdRef.current;
       if (!currentPlayerId) return;
       const updatedPlayer = state.players.find(p => p.id === currentPlayerId);
@@ -109,6 +120,7 @@ export default function ClientApp() {
     });
 
     return () => {
+      socket.off('connect', reconnect);
       socket.off('joined');
       socket.off('gameState');
       socket.off('error');
@@ -124,7 +136,7 @@ export default function ClientApp() {
     setSession(null);
     setPlayer(null);
     setRoomCode(null);
-    setGameState(null);
+    joinedRef.current = false;
     autoJoinAttempted.current = false;
     window.location.href = '/';
   };
@@ -152,7 +164,8 @@ export default function ClientApp() {
             playerName: name,
             playerId,
           };
-          setSession(nextSession);
+          sessionRef.current = nextSession;
+      setSession(nextSession);
           sessionStorage.setItem(CLIENT_SESSION_KEY, JSON.stringify(nextSession));
           socket.emit('joinRoom', { roomCode: code.toUpperCase(), playerName: name, playerId });
         }}

@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react';
 import type { GameState, Player, Barrel, Bullet, Team } from '../../shared/types';
-import { playGunshot, playBulletImpact } from '../sound';
+import { serverNow } from '../socket';
+import { VOLLEY } from '../lib/presentation';
+import { reducedMotion } from '../components/GamePreferences';
+import { playGunshot, playBulletImpact, playTickStart, playTickResolve } from '../sound';
 import { COL, roundRect, drawStar, drawCowboy } from '../lib/cowboyDraw';
 
 interface CanvasArenaProps {
   gameState: GameState;
-  bulletsToAnimate: Bullet[] | null;
-  onBulletsConsumed?: () => void;
 }
 
 const CANVAS_W = 1600;
@@ -32,8 +33,8 @@ interface Layout {
 }
 
 function slotLayout(slotsPerSide: number): Layout {
-  const top = 240;
-  const bottom = 860;
+  const top = 185;
+  const bottom = 820;
   const slotHeight = (bottom - top) / slotsPerSide;
   const ys = Array.from({ length: slotsPerSide }, (_, i) => top + slotHeight * (i + 0.5));
   return {
@@ -118,6 +119,7 @@ interface PlayerAnim {
   slideStart?: number;
   flinchAt?: number;
   deathAt?: number;
+  cover?: number;
 }
 interface Muzzle { x: number; y: number; t: number; life: number; dir: number }
 interface BulletAnim { id: string; fromX: number; fromY: number; toX: number; toY: number; bornAt: number; dur: number; team: Team; hit: Bullet['hit'] }
@@ -139,7 +141,7 @@ interface AnimState {
   timeLeft: number;
 }
 
-export default function CanvasArena({ gameState, bulletsToAnimate, onBulletsConsumed }: CanvasArenaProps) {
+export default function CanvasArena({ gameState }: CanvasArenaProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bgRef = useRef<HTMLImageElement | null>(null);
   const animRef = useRef<number | null>(null);
@@ -162,7 +164,7 @@ export default function CanvasArena({ gameState, bulletsToAnimate, onBulletsCons
 
   useEffect(() => {
     const img = new Image();
-    img.src = '/bg-saloon.png';
+    img.src = '/frontier.svg';
     img.onload = () => { bgRef.current = img; };
   }, []);
 
@@ -207,130 +209,48 @@ export default function CanvasArena({ gameState, bulletsToAnimate, onBulletsCons
   }, [gameState.players]);
 
   useEffect(() => {
-    if (!bulletsToAnimate || bulletsToAnimate.length === 0) return;
     const st = stateRef.current;
+    if (gameState.phase === 'planning') { playTickStart(); return; }
+    if (gameState.phase !== 'resolution' || !gameState.resolutionStartedAt) return;
+    const elapsed = serverNow() - gameState.resolutionStartedAt;
+    if (elapsed > VOLLEY.settle) return;
+    playTickResolve();
     const L = slotLayout(gameState.config.slotsPerSide);
-
-    st.shake.mag = Math.min(28, 10 + bulletsToAnimate.length * 4);
-    st.shake.until = st.t + 0.6;
-    st.flash = Math.min(1, 0.25 + bulletsToAnimate.length * 0.1);
-
     const scheduled: ReturnType<typeof setTimeout>[] = [];
-    bulletsToAnimate.forEach((b, i) => {
-      const isSheriff = b.fromTeam === 'sheriffs';
-      const fromX = isSheriff ? L.sheriffX + 60 : L.outlawX - 60;
+    for (const b of gameState.lastTickBullets) {
+      const right = b.fromTeam === 'sheriffs';
+      const fromX = right ? L.sheriffX + 60 : L.outlawX - 60;
       const fromY = L.ys[b.fromSlot];
-      let toSlot = b.fromSlot;
-      if (b.trajectory === 'up') toSlot -= 1;
-      if (b.trajectory === 'down') toSlot += 1;
-      toSlot = Math.max(0, Math.min(gameState.config.slotsPerSide - 1, toSlot));
-      let toX = isSheriff ? L.outlawX - 60 : L.sheriffX + 60;
-      let toY = L.ys[toSlot];
-
-      if (b.hit === 'bullet') {
-        toX = (fromX + toX) / 2;
-        toY = (fromY + toY) / 2;
-      } else if (b.hit === 'barrel') {
-        toX = isSheriff ? L.outlawBarrel - 25 : L.sheriffBarrel + 25;
-      }
-
-      const launchDelay = i * 0.04;
-      scheduled.push(setTimeout(() => {
+      let toX = right ? L.outlawX : L.sheriffX;
+      let toY = L.ys[b.toSlot];
+      if (b.hit === 'bullet') { toX = L.midX; toY = (fromY + toY) / 2; }
+      if (b.hit === 'barrel') toX = right ? L.outlawBarrel : L.sheriffBarrel;
+      if (b.hit === 'miss') toX = right ? 1510 : 90;
+      const launch = () => {
+        if (elapsed >= VOLLEY.impact) return;
         playGunshot();
-        st.muzzles.push({ x: fromX, y: fromY, t: st.t, life: 0.18, dir: isSheriff ? 1 : -1 });
-        for (let k = 0; k < 8; k++) {
-          st.particles.add({
-            x: fromX + (isSheriff ? 20 : -20),
-            y: fromY + (Math.random() - 0.5) * 10,
-            vx: (isSheriff ? 1 : -1) * (60 + Math.random() * 120),
-            vy: -30 + (Math.random() - 0.5) * 40,
-            gravity: -40,
-            drag: 0.8,
-            size: 6 + Math.random() * 8,
-            life: 0.6 + Math.random() * 0.3,
-            age: 0,
-            color: `rgba(220,210,190,${0.3 + Math.random() * 0.4})`,
-            fade: true,
-          });
+        const overdue = Math.max(0, elapsed - VOLLEY.move) / 1000;
+        st.muzzles.push({ x: fromX, y: fromY, t: st.t - overdue, life: .11, dir: right ? 1 : -1 });
+        st.bullets.push({ id: b.id, fromX, fromY, toX, toY, bornAt: st.t - overdue,
+          dur: (VOLLEY.impact - VOLLEY.move) / 1000, team: b.fromTeam, hit: b.hit });
+        for (let i = 0; i < 6; i++) st.particles.add({ x: fromX, y: fromY, vx: (right?1:-1)*(30+Math.random()*60), vy:-20-Math.random()*30, size:4+Math.random()*4, life:.6, age:0, color:'#c8baa0', fade:true });
+      };
+      if (elapsed < VOLLEY.move) scheduled.push(setTimeout(launch, VOLLEY.move-elapsed)); else launch();
+      if (elapsed < VOLLEY.impact) scheduled.push(setTimeout(() => {
+        playBulletImpact(b.hit);
+        if (b.hit !== 'miss') {
+          st.impacts.push({ x: toX, y: toY, t: st.t, kind: b.hit, team: b.fromTeam });
+          st.shake.mag = b.hit === 'player' ? 7 : 4; st.shake.until = st.t + .2;
         }
-        const speed = 2600;
-        const dx = toX - fromX;
-        const dy = toY - fromY;
-        const dist = Math.hypot(dx, dy);
-        const dur = dist / speed;
-        st.bullets.push({
-          id: `${b.id}-${i}`,
-          fromX, fromY, toX, toY,
-          bornAt: st.t, dur,
-          team: b.fromTeam,
-          hit: b.hit,
-        });
-        scheduled.push(setTimeout(() => {
-          playBulletImpact(b.hit);
-          if (b.hit !== 'miss') {
-            st.impacts.push({ x: toX, y: toY, t: st.t, kind: b.hit as 'player' | 'barrel' | 'bullet', team: b.fromTeam });
-            st.shake.mag = Math.max(st.shake.mag, b.hit === 'player' ? 22 : b.hit === 'bullet' ? 18 : 14);
-            st.shake.until = Math.max(st.shake.until, st.t + 0.35);
-
-            if (b.hit === 'barrel') {
-              for (let k = 0; k < 18; k++) {
-                const ang = Math.random() * Math.PI * 2;
-                const sp = 180 + Math.random() * 300;
-                st.particles.add({
-                  kind: 'square',
-                  x: toX, y: toY,
-                  vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 40,
-                  gravity: 900, drag: 0.3,
-                  size: 3 + Math.random() * 5,
-                  rot: Math.random() * Math.PI,
-                  life: 0.8 + Math.random() * 0.4, age: 0,
-                  color: ['#6b4423', '#3e2417', '#a06a3d', '#8b5a2b'][Math.floor(Math.random() * 4)],
-                  fade: true,
-                });
-              }
-            } else if (b.hit === 'player') {
-              for (let k = 0; k < 22; k++) {
-                const ang = (isSheriff ? 0 : Math.PI) + (Math.random() - 0.5) * 1.6;
-                const sp = 120 + Math.random() * 360;
-                st.particles.add({
-                  x: toX, y: toY,
-                  vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 100,
-                  gravity: 1100, drag: 0.4,
-                  size: 2 + Math.random() * 4,
-                  life: 0.7 + Math.random() * 0.5, age: 0,
-                  color: `rgba(${(140 + Math.random() * 60) | 0},${(20 + Math.random() * 20) | 0},${(20 + Math.random() * 20) | 0},0.95)`,
-                  fade: true,
-                });
-              }
-              st.damages.push({ x: toX, y: toY - 30, text: '-1', t: st.t, color: '#ff4040' });
-            } else if (b.hit === 'bullet') {
-              for (let k = 0; k < 24; k++) {
-                const ang = Math.random() * Math.PI * 2;
-                const sp = 200 + Math.random() * 400;
-                st.particles.add({
-                  kind: 'streak',
-                  x: toX, y: toY,
-                  vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
-                  drag: 1.5,
-                  size: 2 + Math.random() * 2,
-                  life: 0.35 + Math.random() * 0.2, age: 0,
-                  color: ['#ffd875', '#fff3a0', '#ffb347'][Math.floor(Math.random() * 3)],
-                  fade: true,
-                });
-              }
-            }
-          }
-        }, dur * 1000));
-      }, launchDelay * 1000));
-    });
-
-    const consumeTimer = setTimeout(() => { onBulletsConsumed?.(); }, 1500);
-    return () => {
-      scheduled.forEach(clearTimeout);
-      clearTimeout(consumeTimer);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bulletsToAnimate]);
+        st.damages.push({ x: toX, y: toY-38, text: b.hit === 'player' ? '−1' : b.hit === 'barrel' ? 'COVER' : b.hit === 'bullet' ? 'CLASH' : 'MISS', t: st.t, color:b.hit === 'player' ? '#f4a084' : '#ead3a4' });
+        for (let i=0;i<14;i++) {
+          const angle=Math.random()*Math.PI*2, speed=70+Math.random()*150;
+          st.particles.add({ kind:b.hit==='barrel'?'square':'streak', x:toX,y:toY,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-35,gravity:220,drag:.5,size:2+Math.random()*3,life:.5+Math.random()*.25,age:0,color:b.hit==='barrel'?'#bc9062':b.hit==='player'?'#d9b087':'#ffe1a4',fade:true });
+        }
+      }, VOLLEY.impact-elapsed));
+    }
+    return () => { scheduled.forEach(clearTimeout); };
+  }, [gameState.phase, gameState.resolutionStartedAt]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -347,13 +267,14 @@ export default function CanvasArena({ gameState, bulletsToAnimate, onBulletsCons
       st.t += dt;
 
       if (gs.phase === 'planning' && gs.tickStartTime) {
-        const elapsed = Date.now() - gs.tickStartTime;
+        const elapsed = serverNow() - gs.tickStartTime;
         st.timeLeft = Math.max(0, gs.config.tickDuration - elapsed);
       } else {
         st.timeLeft = 0;
       }
 
       st.particles.step(dt);
+      if (document.hidden) { st.bullets = []; st.muzzles = []; st.impacts = []; st.damages = []; }
 
       for (const m of st.ambient) {
         m.x += m.vx * dt;
@@ -363,7 +284,7 @@ export default function CanvasArena({ gameState, bulletsToAnimate, onBulletsCons
         if (m.x > CANVAS_W + 5) m.x = -5;
       }
 
-      const shakeActive = st.t < st.shake.until;
+      const shakeActive = !reducedMotion() && st.t < st.shake.until;
       if (shakeActive) {
         const remaining = Math.max(0, st.shake.until - st.t);
         const decay = remaining / 0.6;
@@ -386,6 +307,8 @@ export default function CanvasArena({ gameState, bulletsToAnimate, onBulletsCons
   return (
     <canvas
       ref={canvasRef}
+      aria-label="Showdown arena. Sheriffs on the left, outlaws on the right."
+      role="img"
       width={CANVAS_W}
       height={CANVAS_H}
       style={{ width: '100%', height: '100%', display: 'block', imageRendering: 'auto' }}
@@ -405,11 +328,11 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bgImg
   drawLaneGuides(ctx, L);
   drawArena(ctx, L, gs, st);
   drawMuzzles(ctx, st);
-  st.particles.draw(ctx);
+  if (!reducedMotion()) st.particles.draw(ctx);
   drawBullets(ctx, st);
   drawImpacts(ctx, st);
   drawDamages(ctx, st);
-  drawDust(ctx, st);
+  if (!reducedMotion()) drawDust(ctx, st);
 
   if (st.flash > 0.01) {
     ctx.fillStyle = `rgba(255,240,200,${st.flash * 0.35})`;
@@ -418,6 +341,9 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bgImg
 
   ctx.restore();
   drawHUD(ctx, gs, st);
+  ctx.textAlign='center';ctx.fillStyle='#ead3b0';ctx.font='11px "Space Mono", monospace';
+  ctx.fillText(gs.phase === 'planning' ? 'CHOOSE ON YOUR PHONE  /  EVERYBODY DRAWS TOGETHER' : 'MOVE  /  DRAW  /  IMPACT',800,145);
+  ctx.fillStyle='#c4bba9';ctx.fillText(`O.K. CORRAL     /     ROOM ${gs.roomCode}`,800,876);
 }
 
 function drawBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null) {
@@ -425,9 +351,9 @@ function drawBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElement | n
   if (img && img.complete) {
     ctx.drawImage(img, -pad, -pad, CANVAS_W + pad * 2, CANVAS_H + pad * 2);
     const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
-    g.addColorStop(0, 'rgba(20,10,4,0.55)');
-    g.addColorStop(0.5, 'rgba(60,30,10,0.15)');
-    g.addColorStop(1, 'rgba(10,5,2,0.7)');
+    g.addColorStop(0, 'rgba(15,30,39,0.12)');
+    g.addColorStop(0.5, 'rgba(26,37,44,0.22)');
+    g.addColorStop(1, 'rgba(13,26,34,0.55)');
     ctx.fillStyle = g;
     ctx.fillRect(-pad, -pad, CANVAS_W + pad * 2, CANVAS_H + pad * 2);
   } else {
@@ -443,7 +369,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElement | n
 function drawVignette(ctx: CanvasRenderingContext2D) {
   const g = ctx.createRadialGradient(CANVAS_W / 2, CANVAS_H / 2, CANVAS_H * 0.3, CANVAS_W / 2, CANVAS_H / 2, CANVAS_H * 0.85);
   g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(1, 'rgba(0,0,0,0.7)');
+  g.addColorStop(1, 'rgba(10,24,32,0.38)');
   ctx.fillStyle = g;
   ctx.fillRect(-40, -40, CANVAS_W + 80, CANVAS_H + 80);
 }
@@ -470,31 +396,23 @@ function drawFloor(ctx: CanvasRenderingContext2D) {
 
 function drawLaneGuides(ctx: CanvasRenderingContext2D, L: Layout) {
   ctx.save();
-  ctx.strokeStyle = 'rgba(224,176,74,0.08)';
-  ctx.setLineDash([6, 10]);
-  ctx.lineWidth = 1;
-  L.ys.forEach((y) => {
-    ctx.beginPath();
-    ctx.moveTo(220, y);
-    ctx.lineTo(CANVAS_W - 220, y);
-    ctx.stroke();
+  L.ys.forEach((y, i) => {
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(18,35,43,.36)' : 'rgba(18,35,43,.19)';
+    roundRect(ctx, 185, y-L.slotHeight/2+3, 1230, L.slotHeight-6, 12);ctx.fill();
+    ctx.strokeStyle='rgba(239,206,159,.15)';ctx.lineWidth=1;ctx.setLineDash([4,12]);
+    ctx.beginPath();ctx.moveTo(600,y);ctx.lineTo(1000,y);ctx.stroke();ctx.setLineDash([]);
+    ctx.font='bold 15px "Space Mono",monospace';ctx.textAlign='center';ctx.fillStyle='#d7c6ac';
+    ctx.fillText(String(i+1).padStart(2,'0'),145,y+5);ctx.fillText(String(i+1).padStart(2,'0'),1455,y+5);
   });
-  ctx.setLineDash([]);
-  ctx.strokeStyle = 'rgba(224,176,74,0.18)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(L.midX, 160);
-  ctx.lineTo(L.midX, 820);
-  ctx.stroke();
   ctx.restore();
 }
 
 function drawArena(ctx: CanvasRenderingContext2D, L: Layout, gs: GameState, st: AnimState) {
   for (let s = 0; s < gs.config.slotsPerSide; s++) {
     const y = L.ys[s];
-    drawBarrel(ctx, L.sheriffBarrel, y, findBarrel(gs, 'sheriffs', s));
+    drawBarrel(ctx, L.sheriffBarrel, y, findBarrel(gs, 'sheriffs', s), Math.min(1,L.slotHeight/125));
     drawPlayer(ctx, L, y, findPlayer(gs, 'sheriffs', s), 'sheriffs', st, gs);
-    drawBarrel(ctx, L.outlawBarrel, y, findBarrel(gs, 'outlaws', s));
+    drawBarrel(ctx, L.outlawBarrel, y, findBarrel(gs, 'outlaws', s), Math.min(1,L.slotHeight/125));
     drawPlayer(ctx, L, y, findPlayer(gs, 'outlaws', s), 'outlaws', st, gs);
   }
 }
@@ -508,11 +426,11 @@ function findBarrel(gs: GameState, team: Team, slot: number): Barrel | undefined
   return gs.barrels.find((b) => b.team === team && b.slot === slot);
 }
 
-function drawBarrel(ctx: CanvasRenderingContext2D, x: number, y: number, barrel: Barrel | undefined) {
+function drawBarrel(ctx: CanvasRenderingContext2D, x: number, y: number, barrel: Barrel | undefined, scale = 1) {
   if (!barrel) return;
   ctx.save();
   ctx.translate(x, y + 14);
-  ctx.scale(0.72, 0.72);
+  ctx.scale(0.82 * scale, 0.82 * scale);
   const hp = barrel.hp;
   if (hp <= 0) {
     ctx.fillStyle = COL.woodDark;
@@ -580,7 +498,7 @@ function drawBarrel(ctx: CanvasRenderingContext2D, x: number, y: number, barrel:
     ctx.stroke();
   }
   if (hp < 2) {
-    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.strokeStyle = 'rgba(10,24,32,0.38)';
     ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(12, -20); ctx.lineTo(6, -2); ctx.lineTo(14, 14); ctx.lineTo(8, 28);
@@ -617,18 +535,24 @@ function drawPlayer(ctx: CanvasRenderingContext2D, L: Layout, y: number, player:
     return;
   }
 
-  const anim = st.playerAnim[player.id] || {};
+  const anim = st.playerAnim[player.id] ||= {};
   let drawY = y;
   if (anim.slideFrom != null && anim.slideTo != null && anim.slideStart != null) {
-    const dur = 0.45;
+    const dur = VOLLEY.move / 1000;
     const tt = Math.min(1, (st.t - anim.slideStart) / dur);
-    if (tt < 1) {
+    if (tt < 1 && !reducedMotion()) {
       const fromY = L.ys[anim.slideFrom];
       const toY = L.ys[anim.slideTo];
       drawY = fromY + (toY - fromY) * easeInOutQuad(tt);
     }
   }
 
+  const motion = !reducedMotion();
+  const actionTime = gs.phase === 'resolution' && gs.resolutionStartedAt ? (serverNow()-gs.resolutionStartedAt)/1000 : -1;
+  const walk = motion && actionTime >= 0 && actionTime < .42 && player.currentAction.startsWith('MOVE') && anim.slideFrom !== anim.slideTo ? Math.sin(actionTime*35) : 0;
+  const recoil = motion && player.currentAction.startsWith('SHOOT') && gs.lastTickBullets.some(b => b.fromTeam === team && b.fromSlot === player.slot) && actionTime >= .42 && actionTime < .7 ? Math.sin((actionTime-.42)/.28*Math.PI) : 0;
+  const reload = actionTime >= 0 && actionTime < .84 && player.currentAction === 'RELOAD' ? Math.sin(actionTime/.84*Math.PI) : 0;
+  const scale = Math.min(1.05, L.slotHeight/140);
   const x = team === 'sheriffs' ? L.sheriffX : L.outlawX;
   const isSheriff = team === 'sheriffs';
   const facing = isSheriff ? 1 : -1;
@@ -659,7 +583,8 @@ function drawPlayer(ctx: CanvasRenderingContext2D, L: Layout, y: number, player:
 
   ctx.save();
   ctx.translate(x + flinch, drawY + deadY);
-  ctx.rotate(deadAngle);
+  ctx.rotate(motion ? deadAngle : 0);
+  ctx.scale(scale, scale);
   ctx.globalAlpha = deadAlpha;
 
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -667,17 +592,17 @@ function drawPlayer(ctx: CanvasRenderingContext2D, L: Layout, y: number, player:
   ctx.ellipse(0, 60, 30, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (covered) {
-    ctx.translate(0, 22);
-    ctx.scale(1, 0.75);
-  }
+  const targetCover = covered ? 1 : 0;
+  anim.cover = reducedMotion() ? targetCover : (anim.cover ?? 0) + (targetCover - (anim.cover ?? 0)) * .16;
+  ctx.translate(facing * anim.cover * 12, anim.cover * 17);
+  ctx.scale(1, 1 - anim.cover * .18);
 
-  drawCowboy(ctx, team, facing === 1 ? 1 : -1, st.t, (player.id || '').length);
+  drawCowboy(ctx, team, facing === 1 ? 1 : -1, motion ? st.t : 0, Array.from(player.name).reduce((n,c)=>n+c.charCodeAt(0),0), { walk, recoil, reload });
 
-  if (player.actionLocked && player.isAlive) {
+  if (gs.phase === 'planning' && player.actionLocked && player.isAlive) {
     ctx.save();
     ctx.globalAlpha = 1;
-    const pulse = 1 + Math.sin(st.t * 8) * 0.15;
+    const pulse = reducedMotion() ? 1 : 1 + Math.sin(st.t * 4) * .06;
     ctx.translate(facing * -38, -78);
     ctx.scale(pulse, pulse);
     ctx.fillStyle = '#4ade80';
@@ -710,7 +635,12 @@ function drawPlayer(ctx: CanvasRenderingContext2D, L: Layout, y: number, player:
   const name = (player.name || '').toUpperCase().slice(0, 10);
   ctx.font = 'bold 12px ui-monospace, monospace';
   const w = Math.min(90, ctx.measureText(name).width + 14);
-  const nameY = drawY + 58;
+  if (gs.phase === 'resolution' && player.isAlive && actionTime < 1.5) {
+    const cue = player.currentAction === 'RELOAD' ? '+1 AMMO' : player.currentAction === 'COVER' ? 'COVER' : player.currentAction.startsWith('MOVE') ? (anim.slideFrom !== anim.slideTo && anim.slideStart != null && st.t-anim.slideStart < 1.5 ? 'MOVE' : 'HELD') : '';
+    ctx.fillStyle = '#d4e7d8';ctx.font='bold 12px "Space Mono", monospace';ctx.textAlign='center';
+    ctx.fillText(cue,x+facing*115,drawY+28);
+  }
+  const nameY = drawY + 63*scale;
   roundRect(ctx, x - w / 2, nameY - 9, w, 18, 3);
   ctx.fill();
   ctx.stroke();
@@ -726,25 +656,26 @@ function drawPlayerHUD(ctx: CanvasRenderingContext2D, x: number, y: number, play
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   // Hearts: 3 stacked, large enough to read at distance
-  const heartSpacing = 22;
-  const heartTop = y - 40;
+  const heartSpacing = 18;
+  const heartTop = y - 16;
   for (let i = 0; i < 3; i++) {
-    drawHeart(ctx, x, heartTop + i * heartSpacing, 10, i < player.hp ? '#ff4c4c' : '#2a1012');
+    drawHeart(ctx, x + (i-1)*heartSpacing, heartTop, 10, i < player.hp ? '#ff4c4c' : '#2a1012');
   }
   // Ammo: 3 stacked below hearts
   const ammoSpacing = 18;
-  const ammoTop = y + 34;
+  const ammoTop = y + 10;
   for (let i = 0; i < 3; i++) {
-    const by = ammoTop + i * ammoSpacing;
+    const by = ammoTop;
+    const bx = x + (i-1)*ammoSpacing;
     ctx.fillStyle = i < player.ammo ? COL.goldBright : '#333';
     ctx.strokeStyle = '#1a1410';
     ctx.lineWidth = 1.5;
-    roundRect(ctx, x - 8, by - 6, 16, 12, 3);
+    roundRect(ctx, bx - 6, by - 6, 12, 14, 3);
     ctx.fill();
     ctx.stroke();
     if (i < player.ammo) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillRect(x - 6, by - 4, 12, 1.5);
+      ctx.fillRect(bx - 4, by - 4, 8, 1.5);
     }
   }
   ctx.restore();
@@ -858,7 +789,7 @@ function drawImpacts(ctx: CanvasRenderingContext2D, st: AnimState) {
     } else if (im.kind === 'player') {
       const r = 20 + p * 40;
       ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = `rgba(161,27,27,${(1 - p) * 0.8})`;
+      ctx.fillStyle = `rgba(245,192,133,${(1 - p) * 0.35})`;
       ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
@@ -874,7 +805,7 @@ function drawDamages(ctx: CanvasRenderingContext2D, st: AnimState) {
     const p = age / life;
     ctx.save();
     ctx.globalAlpha = 1 - p * p;
-    ctx.font = 'bold 36px ui-sans-serif, system-ui';
+    ctx.font = `bold ${d.text === '−1' ? 30 : 17}px 'Space Mono', monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = d.color;
@@ -954,8 +885,7 @@ function drawHUD(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState) {
   const barColor = gs.phase === 'resolution' ? '#e03a3a' : pct < 0.3 ? '#e03a3a' : COL.goldBright;
   ctx.fillStyle = barColor;
   const fw = Math.max(0, barW * pct);
-  roundRect(ctx, barX + 1, barY + 1, fw, barh - 2, 3);
-  ctx.fill();
+  if (fw > 0) ctx.fillRect(barX + 1, barY + 1, Math.max(0, fw-2), barh - 2);
 
   ctx.strokeStyle = 'rgba(255,255,255,0.15)';
   ctx.lineWidth = 1;

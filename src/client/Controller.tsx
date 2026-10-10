@@ -1,409 +1,98 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ArrowUp, ArrowDown, ArrowUpRight, ArrowDownRight, ArrowRight, Shield, RotateCw, Check, LoaderCircle, Heart, Crosshair } from 'lucide-react';
 import type { ClientPlayer, GameState, ActionType } from '../../shared/types';
-import { socket } from '../socket';
-import { playTickStart, playTickResolve, playLockAction, playDeath, playDenied } from '../sound';
-import {
-  WesternBackdrop,
-  WesternBtn,
-  westernStyles as S,
-} from '../components/WesternUI';
+import { socket, serverNow } from '../socket';
+import { playTickStart, playTickResolve, playLockAction } from '../sound';
+import { WesternBackdrop } from '../components/WesternUI';
 import CowboyPortrait from '../components/CowboyPortrait';
 
-interface ControllerProps {
-  player: ClientPlayer;
-  gameState: GameState | null;
-  error: string | null;
-  onLeave: () => void;
-}
-
+interface ControllerProps { player: ClientPlayer; gameState: GameState | null; error: string | null; onLeave: () => void }
+const labels: Record<ActionType, string> = { MOVE_UP: 'Move up', MOVE_DOWN: 'Move down', COVER: 'Take cover', RELOAD: 'Reload', SHOOT_UP: 'Shoot up', SHOOT_STRAIGHT: 'Shoot straight', SHOOT_DOWN: 'Shoot down', NONE: 'No action' };
 export default function Controller({ player, gameState, error, onLeave }: ControllerProps) {
-  const [lockedAction, setLockedAction] = useState<ActionType | null>(null);
-  const [timeLeft, setTimeLeft] = useState(0);
-
-  const myPlayer = gameState?.players.find((p) => p.id === player.id);
-  const isPlanning = gameState?.phase === 'planning';
-  const isLobby = gameState?.phase === 'lobby';
-
+  const mine = gameState?.players.find(p => p.id === player.id);
+  const [pending, setPending] = useState<ActionType | null>(null);
+  const [notice, setNotice] = useState('');
+  const [now, setNow] = useState(serverNow);
+  const [connected, setConnected] = useState(socket.connected);
+  const current = useRef(gameState); current.current = gameState;
+  const inFlight = useRef(false);
+  const mounted = useRef(true);
+  const planning = gameState?.phase === 'planning';
+  const confirmed = mine?.actionLocked ? mine.currentAction : null;
+  const chosen = confirmed || pending;
+  const hp = mine?.hp ?? 3, ammo = mine?.ammo ?? 1;
+  const slot = mine?.slot ?? player.slot;
+  const barrel = gameState?.barrels.find(b => b.team === mine?.team && b.slot === slot);
+  const left = planning ? Math.max(0, (gameState?.tickStartTime ?? now) + (gameState?.config.tickDuration ?? 4000) - now) : 0;
   useEffect(() => {
-    if (!isPlanning || !gameState?.tickStartTime) {
-      setTimeLeft(0);
-      return;
-    }
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - gameState.tickStartTime!;
-      const remaining = Math.max(0, gameState.config.tickDuration - elapsed);
-      setTimeLeft(remaining);
-    }, 50);
-    return () => clearInterval(interval);
-  }, [isPlanning, gameState?.tickStartTime, gameState?.config.tickDuration]);
-
-  useEffect(() => { setLockedAction(null); }, [gameState?.tick]);
-
-  useEffect(() => {
-    socket.on('tickStart', playTickStart);
-    socket.on('tickEnd', playTickResolve);
-    return () => {
-      socket.off('tickStart', playTickStart);
-      socket.off('tickEnd', playTickResolve);
-    };
+    mounted.current = true;
+    const timer = setInterval(() => setNow(serverNow()), 50);
+    const online = () => setConnected(true), offline = () => setConnected(false);
+    socket.on('connect', online); socket.on('disconnect', offline);
+    socket.on('tickStart', playTickStart); socket.on('tickEnd', playTickResolve);
+    return () => { mounted.current = false; clearInterval(timer); socket.off('connect', online); socket.off('disconnect', offline); socket.off('tickStart', playTickStart); socket.off('tickEnd', playTickResolve); };
   }, []);
-
-  // When the server confirms the lock (actionLocked flips true), cancel the
-  // pending ack-timeout so we don't revert a valid lock.
-  useEffect(() => {
-    if (myPlayer?.actionLocked) clearAckTimer();
-  }, [myPlayer?.actionLocked]);
-  useEffect(() => () => clearAckTimer(), []);
-
-  // Death SFX: fire once when this player transitions alive → dead.
-  const wasAliveRef = useRef(true);
-  useEffect(() => {
-    if (myPlayer) {
-      if (wasAliveRef.current && !myPlayer.isAlive) {
-        playDeath();
+  useEffect(() => { setPending(null); setNotice(''); inFlight.current = false; }, [gameState?.tick, gameState?.roomCode]);
+  useEffect(() => { if (confirmed) { setPending(null); inFlight.current = false; setNotice(''); } }, [confirmed]);
+  const submit = useCallback((action: ActionType) => {
+    if (!socket.connected || !planning || !mine?.isAlive || confirmed || pending || inFlight.current) return;
+    if ((action.startsWith('SHOOT') && ammo === 0) || (action === 'RELOAD' && ammo === 3)) return;
+    const tick = gameState!.tick;
+    const startedAt = gameState!.tickStartTime!;
+    inFlight.current = true; setPending(action); setNotice('');
+    socket.timeout(3000).emit('submitAction', { action, tick, startedAt }, (err, result) => {
+      if (!mounted.current || current.current?.tick !== tick || current.current.tickStartTime !== startedAt || current.current.phase !== 'planning') return;
+      inFlight.current = false;
+      if (err) {
+        // A lost acknowledgement is not a rejection: recover the authoritative lock.
+        socket.emit('requestState'); setNotice('Checking your action with the host…'); return;
       }
-      wasAliveRef.current = myPlayer.isAlive;
-    }
-  }, [myPlayer?.isAlive, myPlayer]);
-
-  // Ack tracking: when we emit a lockAction we give the server a short window
-  // to echo it back. If actionLocked doesn't flip true in time we assume the
-  // emit raced against a phase change and revert the optimistic lock.
-  const lockAckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearAckTimer = () => {
-    if (lockAckTimerRef.current) {
-      clearTimeout(lockAckTimerRef.current);
-      lockAckTimerRef.current = null;
-    }
-  };
-
-  const handleAction = useCallback((action: ActionType) => {
-    if (lockedAction || !isPlanning || !myPlayer?.isAlive) return;
-    if (action.startsWith('SHOOT') && (myPlayer?.ammo || 0) <= 0) return;
-    if (action === 'RELOAD' && (myPlayer?.ammo || 0) >= 3) return;
-    setLockedAction(action);
-    socket.emit('lockAction', action);
-    playLockAction();
-    try { navigator.vibrate?.(50); } catch { /* vibration unavailable */ }
-
-    clearAckTimer();
-    lockAckTimerRef.current = setTimeout(() => {
-      lockAckTimerRef.current = null;
-      setLockedAction((cur) => (cur === action ? null : cur));
-      playDenied();
-    }, 600);
-  }, [lockedAction, isPlanning, myPlayer]);
-
-  const hp = myPlayer?.hp ?? 3;
-  const ammo = myPlayer?.ammo ?? 1;
-  const progressPct = isPlanning ? (timeLeft / (gameState?.config.tickDuration || 4000)) * 100 : 0;
-  const isSheriff = player.team === 'sheriffs';
-  const teamColor = isSheriff ? '#3a6fb5' : '#b53a3a';
-
-  if (isLobby) {
-    return (
-      <WesternBackdrop>
-        <div
-          style={{
-            position: 'relative',
-            zIndex: 2,
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            gap: 20,
-            textAlign: 'center',
-          }}
-        >
-          <CowboyPortrait
-            team={player.team ?? 'sheriffs'}
-            size={180}
-            facing={player.team === 'outlaws' ? -1 : 1}
-            seed={(player.name || '').length}
-          />
-          <div>
-            <h1 style={{ ...S.title, fontSize: 36, margin: 0, color: teamColor }}>
-              {isSheriff ? 'SHERIFF' : 'OUTLAW'}
-            </h1>
-            <div style={{ ...S.serif, color: '#f4e9d6', fontSize: 22, letterSpacing: 1, marginTop: 4 }}>{player.name}</div>
-            <div style={{ ...S.mono, fontSize: 11, color: '#d9cbb0', opacity: 0.6, letterSpacing: 2, marginTop: 4 }}>
-              SLOT {(player.slot || 0) + 1}
-            </div>
-          </div>
-          <div style={{ ...S.mono, fontSize: 13, color: '#e0b04a', letterSpacing: 2, opacity: 0.8 }}>
-            Waitin' on the Marshal to call it…
-          </div>
-          <WesternBtn primary big onClick={() => socket.emit('startGame')}>▶ START GUNFIGHT</WesternBtn>
-          <button
-            onClick={onLeave}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              ...S.mono,
-              fontSize: 10,
-              color: '#d9cbb0',
-              opacity: 0.5,
-              letterSpacing: 2,
-              cursor: 'pointer',
-              marginTop: 20,
-            }}
-          >
-            LEAVE ROOM
-          </button>
-        </div>
-      </WesternBackdrop>
-    );
-  }
-
-  const phaseLabel = isPlanning
-    ? `PLANNING · ${(timeLeft / 1000).toFixed(1)}s`
-    : gameState?.phase === 'resolution' ? 'SHOOTOUT'
-    : (gameState?.phase || '').toUpperCase();
-
-  return (
-    <WesternBackdrop>
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        {/* Top HUD */}
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(224,176,74,0.2)', background: 'rgba(15,8,4,0.8)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ ...S.mono, fontSize: 10, color: '#e0b04a', letterSpacing: 2, fontWeight: 'bold' }}>{phaseLabel}</div>
-            <div style={{ ...S.mono, fontSize: 10, color: '#d9cbb0', opacity: 0.7, letterSpacing: 1 }}>
-              ROUND {gameState?.tick || 0} · SLOT {(myPlayer?.slot ?? player.slot ?? 0) + 1}
-            </div>
-          </div>
-          <div
-            style={{
-              height: 8,
-              background: 'rgba(0,0,0,0.6)',
-              borderRadius: 4,
-              border: '1px solid rgba(224,176,74,0.3)',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                width: `${progressPct}%`,
-                height: '100%',
-                background: progressPct < 30 ? '#e03a3a' : '#ffd875',
-                boxShadow: '0 0 8px #ffd875',
-                transition: 'width 80ms linear',
-              }}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {[0, 1, 2].map((i) => (
-                <svg key={i} width={22} height={22} viewBox="0 0 24 24">
-                  <path
-                    d="M 12 21 C 2 14, 2 5, 7 5 C 10 5, 12 8, 12 8 C 12 8, 14 5, 17 5 C 22 5, 22 14, 12 21 Z"
-                    fill={i < hp ? '#ff4c4c' : '#2a1012'}
-                    stroke="rgba(0,0,0,0.5)"
-                    strokeWidth="1"
-                  />
-                </svg>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: 14,
-                    height: 18,
-                    borderRadius: 2,
-                    background: i < ammo ? '#ffd875' : '#333',
-                    border: '1px solid #1a1410',
-                    boxShadow: i < ammo ? '0 0 4px #ffd875' : 'none',
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Portrait */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 16 }}>
-          <div style={{ textAlign: 'center' }}>
-            <CowboyPortrait
-            team={player.team ?? 'sheriffs'}
-            size={180}
-            facing={player.team === 'outlaws' ? -1 : 1}
-            seed={(player.name || '').length}
-          />
-            <div style={{ ...S.serif, color: '#f4e9d6', fontSize: 22, letterSpacing: 2, marginTop: 6 }}>
-              {player.name.toUpperCase()}
-            </div>
-            <div style={{ ...S.mono, fontSize: 10, color: teamColor, letterSpacing: 2, opacity: 0.8 }}>
-              {(isSheriff ? 'SHERIFFS' : 'OUTLAWS')} · SLOT {(myPlayer?.slot ?? player.slot ?? 0) + 1}
-            </div>
-          </div>
-          {lockedAction && (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 20,
-                border: '3px solid #4ade80',
-                borderRadius: 8,
-                background: 'rgba(74,222,128,0.08)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backdropFilter: 'blur(2px)',
-              }}
-            >
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 60 }}>🔒</div>
-                <div style={{ ...S.title, fontSize: 24, color: '#4ade80', letterSpacing: 3 }}>LOCKED IN</div>
-                <div style={{ ...S.mono, fontSize: 11, color: '#d9cbb0', opacity: 0.8, letterSpacing: 2, marginTop: 4 }}>
-                  {lockedAction.replace('_', ' ')}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {error && (
-          <div
-            style={{
-              margin: '0 18px',
-              padding: '10px 14px',
-              background: 'rgba(181,58,58,0.15)',
-              border: '2px solid #b53a3a',
-              borderRadius: 4,
-              color: '#ff8080',
-              textAlign: 'center',
-              ...S.mono,
-              fontWeight: 'bold',
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {/* Controls */}
-        <div style={{ padding: 18, display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: 12 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <DpadBtn label="▲ UP" disabled={!!lockedAction || !isPlanning} onClick={() => handleAction('MOVE_UP')} active={lockedAction === 'MOVE_UP'} />
-            <DpadBtn label="▼ DOWN" disabled={!!lockedAction || !isPlanning} onClick={() => handleAction('MOVE_DOWN')} active={lockedAction === 'MOVE_DOWN'} />
-            <ActionBtn color="#3a6fb5" icon="🛡" label="COVER" disabled={!!lockedAction || !isPlanning} onClick={() => handleAction('COVER')} active={lockedAction === 'COVER'} />
-            <ActionBtn color="#e0b04a" icon="⟳" label="RELOAD" disabled={!!lockedAction || !isPlanning || ammo >= 3} onClick={() => handleAction('RELOAD')} active={lockedAction === 'RELOAD'} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <ActionBtn color="#b53a3a" icon={isSheriff ? '↗' : '↖'} label="SHOOT UP" primary disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_UP')} active={lockedAction === 'SHOOT_UP'} />
-            <ActionBtn color="#b53a3a" icon={isSheriff ? '→' : '←'} label="SHOOT" primary disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_STRAIGHT')} active={lockedAction === 'SHOOT_STRAIGHT'} />
-            <ActionBtn color="#b53a3a" icon={isSheriff ? '↘' : '↙'} label="SHOOT DOWN" primary disabled={!!lockedAction || !isPlanning || ammo <= 0} onClick={() => handleAction('SHOOT_DOWN')} active={lockedAction === 'SHOOT_DOWN'} />
-          </div>
-          <button
-            onClick={onLeave}
-            style={{
-              gridColumn: '1 / -1',
-              background: 'transparent',
-              border: 'none',
-              ...S.mono,
-              fontSize: 10,
-              color: '#d9cbb0',
-              opacity: 0.5,
-              letterSpacing: 2,
-              cursor: 'pointer',
-              marginTop: 8,
-            }}
-          >
-            LEAVE ROOM
-          </button>
-        </div>
-      </div>
-    </WesternBackdrop>
-  );
-}
-
-function DpadBtn({ label, disabled, onClick, active }: { label: string; disabled: boolean; onClick: () => void; active: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        flex: 1,
-        minHeight: 70,
-        background: active
-          ? 'linear-gradient(180deg, #4ade80 0%, #16a34a 100%)'
-          : disabled
-            ? 'rgba(30,15,6,0.5)'
-            : 'linear-gradient(180deg, #3a2414 0%, #1f140a 100%)',
-        border: `2px solid ${active ? '#4ade80' : disabled ? '#3e2417' : '#6b4423'}`,
-        borderRadius: 6,
-        color: active ? '#1a0e08' : disabled ? '#6b4423' : '#f4e9d6',
-        fontFamily: "'Space Mono', monospace",
-        fontSize: 16,
-        fontWeight: 'bold',
-        letterSpacing: 2,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled && !active ? 0.5 : 1,
-        boxShadow: disabled ? 'none' : '0 3px 0 rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,200,150,0.15)',
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function ActionBtn({
-  color,
-  icon,
-  label,
-  primary,
-  disabled,
-  onClick,
-  active,
-}: {
-  color: string;
-  icon: string;
-  label: string;
-  primary?: boolean;
-  disabled: boolean;
-  onClick: () => void;
-  active: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        background: active
-          ? 'linear-gradient(180deg, #4ade80 0%, #16a34a 100%)'
-          : disabled
-            ? 'rgba(30,15,6,0.5)'
-            : primary
-              ? `linear-gradient(180deg, ${color} 0%, ${color}99 100%)`
-              : 'linear-gradient(180deg, #3a2414 0%, #1f140a 100%)',
-        border: `2px solid ${active ? '#4ade80' : disabled ? '#3e2417' : color}`,
-        borderRadius: 6,
-        color: active ? '#1a0e08' : disabled ? '#6b4423' : primary ? '#f4e9d6' : color,
-        fontFamily: "'Space Mono', monospace",
-        fontSize: 10,
-        fontWeight: 'bold',
-        letterSpacing: 1.5,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled && !active ? 0.5 : 1,
-        padding: 4,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: disabled ? 'none' : primary ? `0 3px 0 ${color}66` : '0 3px 0 rgba(0,0,0,0.7)',
-      }}
-    >
-      <div style={{ fontSize: 22, lineHeight: 1 }}>{icon}</div>
-      <div style={{ marginTop: 2 }}>{label}</div>
-    </button>
-  );
+      if (result.accepted) {
+        setPending(result.action || action); playLockAction();
+        navigator.vibrate?.(25);
+      } else { setPending(null); setNotice(result.reason || 'Action unavailable'); }
+    });
+  }, [planning, mine?.isAlive, confirmed, pending, ammo, gameState]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.repeat || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName)) return;
+      const actions: Record<string, ActionType> = { w: 'MOVE_UP', s: 'MOVE_DOWN', a: 'COVER', r: 'RELOAD', q: 'SHOOT_UP', e: 'SHOOT_DOWN', ' ': 'SHOOT_STRAIGHT' };
+      const action = actions[e.key.toLowerCase()]; if (action) { e.preventDefault(); submit(action); }
+    };
+    window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
+  }, [submit]);
+  const disabled = !!chosen || !planning || !connected || !mine?.isAlive;
+  const buttons = [
+    { action: 'MOVE_UP', icon: ArrowUp, key: 'W', note: 'One lane up' },
+    { action: 'SHOOT_UP', icon: ArrowUpRight, key: 'Q', note: 'Upper lane', shot: true },
+    { action: 'MOVE_DOWN', icon: ArrowDown, key: 'S', note: 'One lane down' },
+    { action: 'SHOOT_STRAIGHT', icon: ArrowRight, key: 'SPACE', note: 'Your lane', shot: true },
+    { action: 'COVER', icon: Shield, key: 'A', note: barrel?.hp ? `${barrel.hp}/3 barrel strength` : 'Barrel destroyed' },
+    { action: 'SHOOT_DOWN', icon: ArrowDownRight, key: 'E', note: 'Lower lane', shot: true },
+    { action: 'RELOAD', icon: RotateCw, key: 'R', note: ammo === 3 ? 'Ammo full' : '+1 bullet' },
+  ] as const;
+  return <WesternBackdrop dark><main className="controller-shell">
+    <header className="controller-heading"><div><span className="eyebrow">{player.team === 'sheriffs' ? 'The law' : 'The wanted'}</span><h1>{player.name}</h1></div><span className={`team-chip ${player.team}`}>Lane {slot + 1}</span></header>
+    <section className="player-strip">
+      <CowboyPortrait team={player.team || 'sheriffs'} size={92} facing={player.team === 'outlaws' ? -1 : 1} />
+      <div className="vitals"><span>HEALTH</span><div aria-label={`${hp} of 3 health`}>{[0,1,2].map(i => <Heart key={i} size={22} fill={i < hp ? '#f58b78' : 'transparent'} color={i < hp ? '#f58b78' : '#626b70'} />)}</div></div>
+      <div className="vitals"><span>AMMO</span><div aria-label={`${ammo} of 3 bullets`}>{[0,1,2].map(i => <i key={i} className={`cartridge ${i < ammo ? 'loaded' : ''}`} />)}</div></div>
+    </section>
+    <section className={`round-status ${left < 1000 && planning ? 'urgent' : ''}`}>
+      <div><span className="eyebrow">Round {gameState?.tick || 0}</span><strong>{planning ? 'Make your move' : 'The showdown'}</strong><b>{planning ? `${(left / 1000).toFixed(1)}s` : 'DRAW'}</b></div>
+      <div className="round-track"><i style={{ width: `${Math.min(100, left / (gameState?.config.tickDuration || 4000) * 100)}%` }} /></div>
+    </section>
+    <div className={`lock-strip ${confirmed ? 'confirmed' : ''}`} role="status" aria-live="polite">
+      {confirmed ? <Check size={20} /> : pending ? <LoaderCircle size={20} className="spin" /> : <Crosshair size={20} />}
+      <span>{!connected ? 'Reconnecting — hold tight' : !planning ? 'Watch the arena' : confirmed ? `${labels[confirmed]} · locked in` : pending ? `${labels[pending]} · sending…` : 'One action. Tap to lock it in.'}</span>
+    </div>
+    <div className="action-grid">{buttons.map(({ action, icon: Icon, key, note, ...rest }) => {
+      const shot = 'shot' in rest;
+      return <button key={action} className={`action-tile ${shot ? 'shot' : ''} ${chosen === action ? 'selected' : ''} ${action === 'RELOAD' ? 'reload-tile' : ''}`} disabled={disabled || (shot && ammo === 0) || (action === 'RELOAD' && ammo === 3)} onClick={() => submit(action)}>
+        <Icon size={26} style={shot && player.team === 'outlaws' ? { transform: 'scaleX(-1)' } : undefined} /><span><strong>{labels[action]}</strong><small>{shot && ammo === 0 ? 'Reload to shoot' : note}</small></span><kbd>{key}</kbd>
+      </button>;
+    })}</div>
+    {(error || notice) && <p className="controller-notice" role="status">{error || notice}</p>}
+    <button className="quiet-button leave-button" onClick={onLeave}>Leave room</button>
+  </main></WesternBackdrop>;
 }

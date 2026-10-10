@@ -51,7 +51,7 @@ export default function Lobby({ roomCode, gameState, error }: LobbyProps) {
       <WesternBackdrop>
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-3xl animate-pulse" style={{ ...S.title, fontSize: 32 }}>
-            Setting up the Saloon…
+            {error || 'Setting up the Saloon…'}
           </div>
         </div>
       </WesternBackdrop>
@@ -65,7 +65,7 @@ export default function Lobby({ roomCode, gameState, error }: LobbyProps) {
 
   return (
     <WesternBackdrop>
-      <div
+      <div className="lobby-layout"
         style={{
           position: 'relative',
           zIndex: 2,
@@ -80,8 +80,8 @@ export default function Lobby({ roomCode, gameState, error }: LobbyProps) {
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' }}>
           <div>
             <div style={{ ...S.mono, fontSize: 11, color: '#e0b04a', letterSpacing: 3, opacity: 0.8 }}>★ NOW PLAYING ★</div>
-            <h1 style={{ ...S.title, fontSize: 68, margin: '4px 0 0 0', lineHeight: 1 }}>O.K. Corral</h1>
-            <div style={{ ...S.serif, color: '#d9cbb0', fontSize: 22, marginTop: 8, letterSpacing: 1 }}>
+            <h1 className="lobby-title" style={{ ...S.title, fontSize: 68, margin: '4px 0 0 0', lineHeight: 1 }}>O.K. Corral</h1>
+            <div className="lobby-subtitle" style={{ ...S.serif, color: '#d9cbb0', fontSize: 22, marginTop: 8, letterSpacing: 1 }}>
               Draw yer irons — the Marshal's called a reckonin'
             </div>
             {error && (
@@ -123,7 +123,7 @@ export default function Lobby({ roomCode, gameState, error }: LobbyProps) {
         </header>
 
         {/* Teams */}
-        <main style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, minHeight: 400 }}>
+        <main className="lobby-teams" style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, minHeight: 400 }}>
           <TeamPanel team="sheriffs" players={sheriffs} max={localConfig.slotsPerSide} />
           <TeamPanel team="outlaws" players={outlaws} max={localConfig.slotsPerSide} />
         </main>
@@ -202,8 +202,8 @@ export default function Lobby({ roomCode, gameState, error }: LobbyProps) {
 
 function TeamPanel({ team, players, max }: { team: Team; players: Player[]; max: number }) {
   const isSheriff = team === 'sheriffs';
-  const main = isSheriff ? '#3a6fb5' : '#b53a3a';
-  const dark = isSheriff ? '#1f3d6b' : '#6b1f1f';
+  const main = isSheriff ? '#83c6c2' : '#ee987b';
+  const dark = isSheriff ? '#254c59' : '#613d36';
   return (
     <div
       style={{
@@ -215,7 +215,7 @@ function TeamPanel({ team, players, max }: { team: Team; players: Player[]; max:
         overflow: 'hidden',
       }}
     >
-      <div
+      <div className="lobby-layout"
         style={{
           padding: '14px 20px',
           borderBottom: `1px solid ${dark}`,
@@ -252,10 +252,10 @@ function TeamPanel({ team, players, max }: { team: Team; players: Player[]; max:
 
 function SlotRow({ slot, player, team }: { slot: number; player: Player | undefined; team: Team }) {
   const isSheriff = team === 'sheriffs';
-  const main = isSheriff ? '#3a6fb5' : '#b53a3a';
+  const main = isSheriff ? '#83c6c2' : '#ee987b';
   if (!player) {
     return (
-      <div
+      <div className="lobby-layout"
         style={{
           ...S.mono,
           height: 48,
@@ -355,11 +355,11 @@ function SettingsModal({
             <input
               type="number"
               min={1000}
-              max={30000}
+              max={10000}
               step={500}
               value={config.tickDuration}
               onChange={(e) => {
-                const val = Math.max(1000, Math.min(30000, Number(e.target.value)));
+                const val = Math.max(1000, Math.min(10000, Number(e.target.value)));
                 onConfigChange({ ...config, tickDuration: val });
               }}
               onBlur={() => onCommit({ tickDuration: config.tickDuration })}
@@ -386,11 +386,11 @@ function SettingsModal({
             </div>
             <input
               type="number"
-              min={1}
-              max={10}
+              min={2}
+              max={8}
               value={config.slotsPerSide}
               onChange={(e) => {
-                const val = Math.max(1, Math.min(10, Number(e.target.value)));
+                const val = Math.max(2, Math.min(8, Number(e.target.value)));
                 onConfigChange({ ...config, slotsPerSide: val });
               }}
               onBlur={() => onCommit({ slotsPerSide: config.slotsPerSide })}
