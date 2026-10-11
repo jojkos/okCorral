@@ -146,156 +146,115 @@ export function drawRevolver(c: Canvas, x: number, y: number) {
   c.restore();
 }
 function drawFace(c: Canvas, law: boolean, skin: string) {
-  // The ear sits behind the face. No detached discs, wedges or rectangular shade.
-  curve(
-    c,
-    (p) => {
-      p.moveTo(-10, -32);
-      p.bezierCurveTo(-15, -34, -15, -26, -11, -26);
-      p.closePath();
-    },
-    skin,
-  );
-  curve(
-    c,
-    (p) => {
-      p.moveTo(-12, -30.7);
-      p.quadraticCurveTo(-13.6, -29, -11.5, -28);
-    },
-    null,
-    'rgba(92,54,35,.42)',
-    0.65,
-  );
-  const shape = (p: Canvas) => {
-    p.moveTo(-9, -40);
-    p.quadraticCurveTo(-4, -44, 7, -40);
-    p.quadraticCurveTo(11, -38, 11, -32);
-    p.quadraticCurveTo(11, -30, 13, -28.7);
-    p.quadraticCurveTo(15, -27, 11.3, -26);
-    p.lineTo(11, -21);
-    p.quadraticCurveTo(10, -17, 5, -16);
-    p.lineTo(-3, -16.5);
-    p.quadraticCurveTo(-10, -18, -10.8, -24);
-    p.lineTo(-11, -34);
-    p.quadraticCurveTo(-11, -38, -9, -40);
-    p.closePath();
-  };
+  const hair = law ? '#6e4d36' : '#514039';
+  // One contour joins the temple, cheek, jaw and small rear ear.
   c.save();
   c.beginPath();
-  shape(c);
+  c.moveTo(-8, -40);
+  c.quadraticCurveTo(-1, -43, 6, -40);
+  c.quadraticCurveTo(10.5, -38, 10.5, -32);
+  c.quadraticCurveTo(11.2, -28, 10.5, -25);
+  c.lineTo(10.3, -22);
+  c.quadraticCurveTo(9.3, -17.6, 4.5, -16.7);
+  c.lineTo(-2.3, -17);
+  c.quadraticCurveTo(-8, -18.2, -9.3, -24);
+  c.lineTo(-9.7, -26.4);
+  c.quadraticCurveTo(-12.4, -26.4, -12.5, -29.5);
+  c.quadraticCurveTo(-12.6, -31.5, -10.1, -31.1);
+  c.lineTo(-10, -36);
+  c.quadraticCurveTo(-10, -38.8, -8, -40);
+  c.closePath();
+  c.fillStyle = skin;
+  c.fill();
   c.clip();
-  const flesh = c.createLinearGradient(-12, -35, 15, -23);
-  flesh.addColorStop(0, '#af7854');
-  flesh.addColorStop(0.35, skin);
-  flesh.addColorStop(1, skin);
-  c.fillStyle = flesh;
-  c.fillRect(-16, -46, 34, 36);
-  const shade = c.createLinearGradient(0, -40, 0, -31);
-  shade.addColorStop(0, 'rgba(64,44,31,.27)');
-  shade.addColorStop(1, 'rgba(64,44,31,0)');
+  // Restrained side plane; no separate patches across the eyes or cheek.
+  const shade = c.createLinearGradient(-12, -30, 3, -30);
+  shade.addColorStop(0, 'rgba(91,55,34,.22)');
+  shade.addColorStop(1, 'rgba(91,55,34,0)');
   c.fillStyle = shade;
-  c.fillRect(-15, -43, 33, 13);
-  // Hair and sideburn follow the cheek; the facial silhouette remains visible.
+  c.fillRect(-14, -44, 29, 30);
   curve(
     c,
     (p) => {
-      p.moveTo(-11, -38);
-      p.lineTo(-5, -39);
-      p.quadraticCurveTo(-8, -35, -7.5, -28);
-      p.lineTo(-10, -26);
+      p.moveTo(-11, -37);
+      p.lineTo(-8, -41);
+      p.lineTo(5, -41);
+      p.lineTo(8, -38);
+      p.quadraticCurveTo(0, -39.5, -7.5, -36.5);
+      p.lineTo(-8.4, -28.6);
+      p.lineTo(-10, -29.4);
       p.closePath();
     },
-    law ? '#71472f' : '#3d3431',
+    hair,
   );
-  if (!law)
+  if (!law) {
+    // A close-cropped beard follows the jaw, leaving the mouth on visible skin.
     curve(
       c,
       (p) => {
-        p.moveTo(-8, -25);
-        p.quadraticCurveTo(-5, -23, -2, -23.5);
-        p.quadraticCurveTo(3, -21, 10.5, -24);
-        p.lineTo(10, -20);
-        p.quadraticCurveTo(9, -16, 4, -15.8);
-        p.quadraticCurveTo(-5, -15.8, -8, -20);
+        p.moveTo(-8.7, -26);
+        p.lineTo(-6.5, -24);
+        p.lineTo(-5.2, -21);
+        p.quadraticCurveTo(1, -18.5, 8.7, -21.7);
+        p.lineTo(10.5, -24);
+        p.lineTo(10.5, -18);
+        p.lineTo(2, -15.5);
+        p.lineTo(-7, -18);
         p.closePath();
       },
-      '#3b3431',
+      hair,
     );
+  }
   c.restore();
-  // Eyelids, brows and irises read as a gaze, without an eye bar.
+  // Short brows and open eyes keep a steady gaze at portrait and arena sizes.
   curve(
     c,
     (p) => {
-      p.moveTo(2, -34.3);
-      p.quadraticCurveTo(5, -35.3, 8, -34.1);
+      p.moveTo(-4.2, -34.1);
+      p.lineTo(-1.5, -34.3);
+      p.moveTo(2.5, -34.3);
+      p.lineTo(6.5, -34.1);
     },
     null,
-    law ? '#755039' : '#554036',
-    0.9,
+    hair,
+    0.85,
   );
+  for (const [x, width] of [
+    [-2.6, 1.25],
+    [4.9, 1.65],
+  ]) {
+    c.fillStyle = '#dec4a0';
+    c.beginPath();
+    c.moveTo(x - width, -31.5);
+    c.quadraticCurveTo(x, -33.1, x + width, -31.5);
+    c.quadraticCurveTo(x, -30.1, x - width, -31.5);
+    c.closePath();
+    c.fill();
+    c.fillStyle = '#34302b';
+    c.beginPath();
+    c.ellipse(x + 0.35, -31.5, 0.55, 0.65, 0, 0, Math.PI * 2);
+    c.fill();
+  }
+  // A short nose underside implies form without a separate bulb or wedge.
   curve(
     c,
     (p) => {
-      p.moveTo(-4, -34.4);
-      p.quadraticCurveTo(-2.7, -35, -1.2, -34.3);
+      p.moveTo(6.4, -29.6);
+      p.lineTo(7.1, -27.4);
+      p.quadraticCurveTo(6.3, -26.8, 5.2, -27.1);
     },
     null,
-    '#755039',
-    0.75,
-  );
-  curve(
-    c,
-    (p) => {
-      p.moveTo(2.4, -31.8);
-      p.quadraticCurveTo(5, -33, 7.5, -31.5);
-      p.quadraticCurveTo(5, -30.2, 2.4, -31.8);
-    },
-    '#eed5b5',
-  );
-  c.fillStyle = '#3a3430';
-  c.beginPath();
-  c.ellipse(5.6, -31.6, 0.9, 1.05, 0, 0, Math.PI * 2);
-  c.fill();
-  curve(
-    c,
-    (p) => {
-      p.moveTo(2.4, -31.8);
-      p.quadraticCurveTo(5, -33, 7.5, -31.5);
-    },
-    null,
-    '#694630',
-    0.7,
-  );
-  curve(
-    c,
-    (p) => {
-      p.moveTo(-3.5, -31.8);
-      p.quadraticCurveTo(-2, -32.5, -0.6, -31.6);
-    },
-    null,
-    '#4b392e',
-    0.75,
-  );
-  curve(
-    c,
-    (p) => {
-      p.moveTo(9.4, -31);
-      p.quadraticCurveTo(9, -28, 11.9, -27.2);
-    },
-    null,
-    'rgba(150,97,63,.45)',
+    'rgba(121,74,46,.42)',
     0.6,
   );
-  // Two restrained tapered lobes leave the cheek and mouth readable.
-  const hair = law ? '#6b472f' : '#3b3431';
+  // Simple tapered moustache, with a separate quiet mouth below.
   curve(
     c,
     (p) => {
-      p.moveTo(3.7, -24.5);
-      p.quadraticCurveTo(1, -25.2, -2.8, -22.5);
-      p.quadraticCurveTo(0.4, -21.8, 3.7, -23.4);
-      p.quadraticCurveTo(6.5, -21.6, 9.8, -22.5);
-      p.quadraticCurveTo(7, -25, 3.7, -24.5);
+      p.moveTo(1.1, -24.1);
+      p.quadraticCurveTo(4.7, -25.3, 7.6, -24.2);
+      p.lineTo(8.8, -23.2);
+      p.quadraticCurveTo(4.5, -23.7, 0.2, -23.2);
       p.closePath();
     },
     hair,
@@ -303,34 +262,13 @@ function drawFace(c: Canvas, law: boolean, skin: string) {
   curve(
     c,
     (p) => {
-      p.moveTo(0.4, -23.4);
-      p.lineTo(2.5, -23.9);
+      p.moveTo(2.8, -21.5);
+      p.lineTo(6.8, -21.4);
     },
     null,
-    law ? '#98704c' : '#6b5745',
-    0.45,
-  );
-  curve(
-    c,
-    (p) => {
-      p.moveTo(2.5, -20.2);
-      p.quadraticCurveTo(5, -19.4, 7, -20.3);
-    },
-    null,
-    law ? '#925a3d' : '#c79575',
+    '#88563f',
     0.65,
   );
-  if (law)
-    curve(
-      c,
-      (p) => {
-        p.moveTo(3, -17.8);
-        p.quadraticCurveTo(5, -17.5, 6.6, -18);
-      },
-      null,
-      'rgba(255,229,195,.42)',
-      0.6,
-    );
 }
 function drawHatShape(c: Canvas, law: boolean) {
   const felt = law ? '#bb9460' : '#45444b',

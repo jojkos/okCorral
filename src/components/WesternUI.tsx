@@ -106,11 +106,13 @@ export function MiniCowboy({ team, size = 32 }: { team: Team; size?: number }) {
   const isSheriff = team === 'sheriffs';
   return (
     <svg width={size} height={size} viewBox="0 0 32 32">
-      <path d="M10 11 Q8 13 10 16 L11 17 Q12 21 17 21 Q21 20 21 17 L23 16 L21 14 L21 10Z" fill="#d9a87c" />
-      <path d="M10 10 L13 10 L12 17 L10 16Z" fill={isSheriff ? '#71472f' : '#3d3431'} />
-      <path d="M17 13 L20 13.5 M13 13 L14 13" stroke="#694630" strokeWidth=".8" strokeLinecap="round" />
-      <circle cx="19" cy="14.5" r=".65" fill="#3a3430" />
-      <path d={isSheriff ? 'M17 17 Q15 16 13 18 Q16 19 17 18 Q19 19 21 18 Q19 16 17 17' : 'M12 17 Q16 19 21 17 L20 20 Q17 23 13 20Z'} fill={isSheriff ? '#6b472f' : '#3b3431'} />
+      <path d="M10 11 L10 14 Q8.5 14 9 15.5 L11 16 Q12 21 17 21 Q21 20 21 17 L21 10Z" fill="#d9a87c" />
+      <path d="M10 10 L12.5 10 L12 15 L10.5 14.5Z" fill={isSheriff ? '#6e4d36' : '#514039'} />
+      <path d="M17 13 L19.5 13 M13 13 L14.5 13" stroke="#694630" strokeWidth=".65" strokeLinecap="round" />
+      <ellipse cx="18.5" cy="14.5" rx=".55" ry=".5" fill="#34302b" />
+      <ellipse cx="14" cy="14.5" rx=".5" ry=".5" fill="#34302b" />
+      <path d="M15 17 Q17.5 16 19.5 17.5 L14.5 17.5Z" fill={isSheriff ? '#6e4d36' : '#514039'} />
+      {!isSheriff && <path d="M11.5 16.5 L13.5 19 Q17 21 20.5 18.5 L20 20 Q16 23 12.5 20Z" fill="#514039" />}
       <path d="M5 9 Q16 5 27 9 Q29 12 16 12 Q3 11 5 9" fill={isSheriff ? '#bb9460' : '#45444b'} />
       <path d="M10 9 L11 3 Q13 1 16 4 Q20 1 21 4 L23 9Z" fill={isSheriff ? '#bb9460' : '#45444b'} />
       <path d="M11 3 L14 3 L14 9 L10 9Z" fill={isSheriff ? '#896840' : '#2b3339'} />
