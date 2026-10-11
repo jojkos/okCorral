@@ -31,8 +31,14 @@ try {
   assert.equal(second.accepted,true);
   a.disconnect();const online=event(a,'connect');a.connect();await online;
   const restored=event(a,'gameState',s=>s.players.some((p:any)=>p.id===`test-${roomCode}-a`&&p.actionLocked));
+  const privateRejoin=event(a,'joined');
   a.emit('joinRoom',{roomCode,playerId:`test-${roomCode}-a`,playerName:'a'});
-  assert.equal((await restored).players.find((p:any)=>p.id===`test-${roomCode}-a`).currentAction,'SHOOT_STRAIGHT');
+  await privateRejoin;
+  // Planning broadcasts hide the choice; a duplicate ack returns it only to its owner.
+  assert.equal((await restored).players.find((p:any)=>p.id===`test-${roomCode}-a`).currentAction,'NONE');
+  const rejoinedChoice=await a.timeout(2000).emitWithAck('submitAction',{tick,startedAt:startTime,action:'RELOAD'});
+  assert.equal(rejoinedChoice.accepted,true);
+  assert.equal(rejoinedChoice.action,'SHOOT_STRAIGHT');
   const [resolvedA,resolvedB]=await Promise.all([event(a,'tickEnd'),event(b,'tickEnd')]);
   assert.equal(resolvedA.state.resolutionStartedAt,resolvedB.state.resolutionStartedAt);
   assert.equal(resolvedA.state.players.find((p:any)=>p.id===`test-${roomCode}-b`).hp,2);

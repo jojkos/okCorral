@@ -56,6 +56,30 @@ export function drawLanes(ctx: CanvasRenderingContext2D, L: Layout, threatened: 
         const py = y0 + 3 + ((h - 6) * k) / 4;
         ctx.beginPath(); ctx.moveTo(x0 + 8, py); ctx.lineTo(x0 + w - 8, py); ctx.stroke();
       }
+      // Quiet wood details at the plank ends; keep the player lane uncluttered.
+      for (let k = 0; k < 4; k++) {
+        const py = y0 + 3 + (h - 6) * (k + 0.5) / 4;
+        ctx.strokeStyle = 'rgba(223,170,106,0.10)';
+        ctx.beginPath();
+        ctx.moveTo(x0 + 14, py + 3); ctx.lineTo(x0 + 65 + rand(i * 17 + k) * 38, py + 2);
+        ctx.moveTo(x0 + w - 85, py - 4); ctx.lineTo(x0 + w - 14, py - 3);
+        ctx.stroke();
+        for (const nx of [x0 + 11, x0 + w - 11]) {
+          ctx.fillStyle = 'rgba(8,12,14,0.46)';
+          ctx.beginPath(); ctx.arc(nx, py, 2, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = 'rgba(241,191,130,0.16)';
+          ctx.fillRect(nx - 1, py - 1, 2, 1);
+        }
+      }
+      // Sunlit street lip and a soft contact shadow below its raised edge.
+      const edgeX = team === 'sheriffs' ? x0 + w : x0;
+      const contact = ctx.createLinearGradient(edgeX - 10, 0, edgeX + 10, 0);
+      contact.addColorStop(team === 'sheriffs' ? 0 : 1, 'rgba(12,13,13,0.30)');
+      contact.addColorStop(team === 'sheriffs' ? 1 : 0, 'rgba(12,13,13,0)');
+      ctx.fillStyle = contact;
+      ctx.fillRect(edgeX - 10, y0 + 8, 20, h - 16);
+      ctx.fillStyle = 'rgba(221,166,101,0.27)';
+      ctx.fillRect(team === 'sheriffs' ? edgeX - 6 : edgeX + 3, y0 + 8, 3, h - 16);
       // Team-tinted edge facing the street
       ctx.fillStyle = TEAM_COL[team].glow + '0.35)';
       ctx.fillRect(team === 'sheriffs' ? x0 + w - 4 : x0, y0 + 6, 4, h - 12);

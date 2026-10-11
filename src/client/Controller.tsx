@@ -138,7 +138,7 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
         <span className="ctl-portrait"><CowboyPortrait team={team} size={54} facing={team === 'outlaws' ? -1 : 1} /></span>
         <div className="ctl-who"><span className="eyebrow">{team === 'sheriffs' ? 'The law' : 'The wanted'} · Lane {slot + 1}/{lanes}</span><h1>{player.name}</h1></div>
         <div className="ctl-vitals">
-          <div aria-label={`${hp} of 3 health`}>{[0, 1, 2].map(i => <Heart key={i} size={17} fill={i < hp ? '#f58b78' : 'transparent'} color={i < hp ? '#f58b78' : '#626b70'} />)}</div>
+          <div aria-label={`${hp} of 3 health`}>{[0, 1, 2].map(i => <Heart key={i} size={17} className={`vital-heart ${i < hp ? 'filled' : ''}`} aria-hidden />)}</div>
           <div aria-label={`${ammo} of 3 bullets`}>{[0, 1, 2].map(i => <i key={i} className={`cartridge ${i < ammo ? 'loaded' : ''}`} />)}</div>
         </div>
       </header>

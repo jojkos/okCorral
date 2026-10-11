@@ -345,7 +345,7 @@
   font-size: calc(var(--u) * 1.9);
   color: var(--gold);
 }
-.hl-team__count span { font-size: 0.6em; opacity: 0.5; }
+.hl-team__count span { font-size: 0.6em; opacity: 0.75; }
 
 .hl-team__slots {
   flex: 1;
@@ -379,8 +379,22 @@
   font-size: calc(var(--u) * 0.9);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(217, 203, 176, 0.45);
+  color: rgba(231, 218, 191, 0.72);
 }
+.hl-slot__vacancy {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: calc(var(--u) * 2.5);
+  height: calc(var(--u) * 2.5);
+  border: 1px solid color-mix(in srgb, var(--team) 30%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--team) 6%, transparent);
+  color: var(--team-hi);
+  opacity: 0.55;
+}
+.hl-slot__vacancy svg { width: 55%; height: 55%; }
+.hl-slot__empty-label { font-size: 0.86em; letter-spacing: 0.06em; }
 .hl-slot--taken {
   background: rgba(20, 10, 4, 0.6);
   border: 1px solid color-mix(in srgb, var(--team-hi) 60%, transparent);
@@ -388,7 +402,7 @@
   animation: hl-slot-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
 .hl-slot--taken .hl-slot__num { opacity: 0.9; }
-.hl-slot__avatar { --a: calc(var(--u) * 2.5); }
+.hl-slot__avatar { --a: calc(var(--u) * 2.5); background: color-mix(in srgb, var(--team) 12%, #172b33); border-color: color-mix(in srgb, var(--team-hi) 45%, transparent); }
 .hl-slot__name {
   flex: 1;
   min-width: 0;
@@ -664,6 +678,7 @@
 .hl--dense .hl-team__slots { gap: calc(var(--u) * 0.25); padding-top: calc(var(--u) * 0.5); padding-bottom: calc(var(--u) * 0.5); }
 .hl--dense .hl-slot { flex-basis: calc(var(--u) * 2.5); min-height: calc(var(--u) * 2.2); }
 .hl--dense .hl-slot__avatar { --a: calc(var(--u) * 2.05); }
+.hl--dense .hl-slot__vacancy { width: calc(var(--u) * 2.05); height: calc(var(--u) * 2.05); }
 .hl--dense .hl-slot__name { font-size: calc(var(--u) * 1.15); }
 
 /* Lobby breakpoints */

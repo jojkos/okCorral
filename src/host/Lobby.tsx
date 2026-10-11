@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import type { GameState, Player, GameConfig, Team } from '../../shared/types';
 import { socket } from '../socket';
 import QRCode from 'qrcode';
-import { Bot, Hourglass, Smartphone, UserMinus, UserPlus } from 'lucide-react';
+import { Bot, Hourglass, Smartphone, UserMinus, UserPlus, UserRound } from 'lucide-react';
 import {
   WesternBackdrop,
   StarEmblem,
@@ -204,7 +204,7 @@ function TeamPanel({ team, players, max }: { team: Team; players: Player[]; max:
           <div className="hl-team__name">{isSheriff ? 'SHERIFFS' : 'OUTLAWS'}</div>
           <div className="hl-team__motto">{isSheriff ? 'Law of the land · left side' : 'Dead or alive · right side'}</div>
         </div>
-        <div className="hl-team__count">
+        <div className="hl-team__count" aria-label={`${players.length} of ${max} seats filled`}>
           {players.length}
           <span>/{max}</span>
         </div>
@@ -251,7 +251,8 @@ function SlotRow({ slot, player }: { slot: number; player: Player | undefined })
     return (
       <div className="hl-slot hl-slot--empty">
         <span className="hl-slot__num">{slot + 1}</span>
-        <span>Empty seat</span>
+        <span className="hl-slot__vacancy" aria-hidden="true"><UserRound /></span>
+        <span className="hl-slot__empty-label">Seat available</span>
       </div>
     );
   }

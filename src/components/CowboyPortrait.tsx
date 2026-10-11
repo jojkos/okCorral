@@ -4,7 +4,7 @@ import { reducedMotion } from './GamePreferences';
 import { drawCowboy } from '../lib/cowboyDraw';
 
 // The cowboy is drawn around origin (0,0) with bounds roughly
-// y: -58 (hat top) to y: +65 (boots), x: ±40 (including revolver).
+// y: -61 (hat top) to y: +66 (boots), x: -30 to +61 (revolver).
 // Logical canvas box is a fixed 140×180 centered on origin, then scaled
 // to the requested pixel size preserving aspect ratio.
 const LOGICAL_W = 140;
@@ -44,11 +44,19 @@ export default function CowboyPortrait({
       // so the hat fits above and the boots fit below.
       ctx.save();
       ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2 + 18);
-      // Soft shadow under boots
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      // Feathered contact shadow keeps the two boot silhouettes distinct.
+      const shadow = ctx.createRadialGradient(0, 0, 2, 0, 0, 31);
+      shadow.addColorStop(0, 'rgba(8,17,22,0.34)');
+      shadow.addColorStop(0.55, 'rgba(8,17,22,0.20)');
+      shadow.addColorStop(1, 'rgba(8,17,22,0)');
+      ctx.save();
+      ctx.translate(2 * facing, 68);
+      ctx.scale(1, 0.2);
+      ctx.fillStyle = shadow;
       ctx.beginPath();
-      ctx.ellipse(0, 68, 32, 6, 0, 0, Math.PI * 2);
+      ctx.arc(0, 0, 31, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
       drawCowboy(ctx, team, facing, animated && !reducedMotion() ? t / 1000 : 0, seed);
       ctx.restore();
       if (animated) rafRef.current = requestAnimationFrame(render);

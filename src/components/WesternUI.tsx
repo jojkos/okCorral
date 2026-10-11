@@ -106,13 +106,19 @@ export function MiniCowboy({ team, size = 32 }: { team: Team; size?: number }) {
   const isSheriff = team === 'sheriffs';
   return (
     <svg width={size} height={size} viewBox="0 0 32 32">
-      <ellipse cx="16" cy="9" rx="11" ry="2.5" fill={isSheriff ? '#5a3a1a' : '#1a0e08'} />
-      <rect x="10" y="3" width="12" height="7" rx="1" fill={isSheriff ? '#5a3a1a' : '#1a0e08'} />
-      <rect x="10" y="7" width="12" height="1.5" fill={isSheriff ? '#ffd875' : '#613d36'} />
-      <circle cx="16" cy="15" r="6" fill="#e8c39a" />
-      <rect x="10" y="12" width="12" height="3" fill="rgba(0,0,0,0.35)" />
-      <rect x="10" y="18" width="12" height="3" fill={isSheriff ? '#83c6c2' : '#ee987b'} />
-      <rect x="6" y="22" width="20" height="8" rx="2" fill={isSheriff ? '#83c6c2' : '#ee987b'} />
+      <path d="M10 11 Q8 13 10 16 L11 17 Q12 21 17 21 Q21 20 21 17 L23 16 L21 14 L21 10Z" fill="#d9a87c" />
+      <path d="M10 10 L13 10 L12 17 L10 16Z" fill={isSheriff ? '#71472f' : '#3d3431'} />
+      <path d="M17 13 L20 13.5 M13 13 L14 13" stroke="#694630" strokeWidth=".8" strokeLinecap="round" />
+      <circle cx="19" cy="14.5" r=".65" fill="#3a3430" />
+      <path d={isSheriff ? 'M17 17 Q15 16 13 18 Q16 19 17 18 Q19 19 21 18 Q19 16 17 17' : 'M12 17 Q16 19 21 17 L20 20 Q17 23 13 20Z'} fill={isSheriff ? '#6b472f' : '#3b3431'} />
+      <path d="M5 9 Q16 5 27 9 Q29 12 16 12 Q3 11 5 9" fill={isSheriff ? '#bb9460' : '#45444b'} />
+      <path d="M10 9 L11 3 Q13 1 16 4 Q20 1 21 4 L23 9Z" fill={isSheriff ? '#bb9460' : '#45444b'} />
+      <path d="M11 3 L14 3 L14 9 L10 9Z" fill={isSheriff ? '#896840' : '#2b3339'} />
+      <path d="M10.5 8 Q16 9 22 8" stroke={isSheriff ? '#6c4f36' : '#a9674c'} strokeWidth="1.8" />
+      <path d="M6 10 Q16 13 27 10" fill="none" stroke={isSheriff ? '#ead1a2' : '#bda892'} strokeWidth=".6" />
+      <path d="M6 30 L7 24 Q9 22 12 22 L20 22 Q24 22 25 25 L26 30Z" fill={isSheriff ? '#549d9d' : '#b86248'} />
+      <path d="M13 23 L19 23 L20 30 L13 30Z" fill="#e5d2ae" />
+      <path d="M11 22 L14 21 L16 25 L12 26Z M19 21 L22 23 L19 26 L17 24Z" fill={isSheriff ? '#a6ddd2' : '#f0b398'} />
       {isSheriff ? (
         <polygon points="10,26 12,25 13,27 11,28" fill="#ffd875" />
       ) : (

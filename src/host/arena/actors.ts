@@ -67,8 +67,15 @@ export function drawActor(ctx: CanvasRenderingContext2D, L: Layout, p: Player, f
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.ellipse(0, 0, 60 * s, 16 * s, 0, 0, Math.PI * 2); ctx.fill();
   }
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.beginPath(); ctx.ellipse(0, 0, 32 * s * (1 + fall * 0.8), 6 * s, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.scale(1 + fall * 0.8, 0.2);
+  const shadow = ctx.createRadialGradient(0, 0, 3 * s, 0, 0, 34 * s);
+  shadow.addColorStop(0, 'rgba(5,12,16,0.46)');
+  shadow.addColorStop(0.6, 'rgba(5,12,16,0.24)');
+  shadow.addColorStop(1, 'rgba(5,12,16,0)');
+  ctx.fillStyle = shadow;
+  ctx.beginPath(); ctx.arc(0, 0, 34 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 
   // Fall backwards (away from the street), pivoting at the boots.
   ctx.rotate(-facing * fall * (Math.PI / 2 - 0.3));
