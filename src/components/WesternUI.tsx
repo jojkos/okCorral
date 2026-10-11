@@ -103,34 +103,9 @@ export function SkullEmblem({ size = 48, color = '#f4e9d6' }: { size?: number; c
 }
 
 export function MiniCowboy({ team, size = 32 }: { team: Team; size?: number }) {
-  const isSheriff = team === 'sheriffs';
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32">
-      <path d="M10 11 L10 14 Q8.5 14 9 15.5 L11 16 Q12 21 17 21 Q21 20 21 17 L21 10Z" fill="#d9a87c" />
-      <path d="M10 10 L12.5 10 L12 15 L10.5 14.5Z" fill={isSheriff ? '#6e4d36' : '#514039'} />
-      <path d="M17 13 L19.5 13 M13 13 L14.5 13" stroke="#694630" strokeWidth=".65" strokeLinecap="round" />
-      <ellipse cx="18.5" cy="14.5" rx=".55" ry=".5" fill="#34302b" />
-      <ellipse cx="14" cy="14.5" rx=".5" ry=".5" fill="#34302b" />
-      <path d="M15 17 Q17.5 16 19.5 17.5 L14.5 17.5Z" fill={isSheriff ? '#6e4d36' : '#514039'} />
-      {!isSheriff && <path d="M11.5 16.5 L13.5 19 Q17 21 20.5 18.5 L20 20 Q16 23 12.5 20Z" fill="#514039" />}
-      <path d="M5 9 Q16 5 27 9 Q29 12 16 12 Q3 11 5 9" fill={isSheriff ? '#bb9460' : '#45444b'} />
-      <path d="M10 9 L11 3 Q13 1 16 4 Q20 1 21 4 L23 9Z" fill={isSheriff ? '#bb9460' : '#45444b'} />
-      <path d="M11 3 L14 3 L14 9 L10 9Z" fill={isSheriff ? '#896840' : '#2b3339'} />
-      <path d="M10.5 8 Q16 9 22 8" stroke={isSheriff ? '#6c4f36' : '#a9674c'} strokeWidth="1.8" />
-      <path d="M6 10 Q16 13 27 10" fill="none" stroke={isSheriff ? '#ead1a2' : '#bda892'} strokeWidth=".6" />
-      <path d="M6 30 L7 24 Q9 22 12 22 L20 22 Q24 22 25 25 L26 30Z" fill={isSheriff ? '#549d9d' : '#b86248'} />
-      <path d="M13 23 L19 23 L20 30 L13 30Z" fill="#e5d2ae" />
-      <path d="M11 22 L14 21 L16 25 L12 26Z M19 21 L22 23 L19 26 L17 24Z" fill={isSheriff ? '#a6ddd2' : '#f0b398'} />
-      {isSheriff ? (
-        <polygon points="10,26 12,25 13,27 11,28" fill="#ffd875" />
-      ) : (
-        <g stroke="#f4e9d6" strokeWidth="1.2">
-          <line x1="10" y1="25" x2="13" y2="28" />
-          <line x1="13" y1="25" x2="10" y2="28" />
-        </g>
-      )}
-    </svg>
-  );
+  return <svg width={size} height={size} viewBox={team === 'sheriffs' ? '174 44 396 320' : '877 20 350 344'} aria-hidden="true">
+    <image href="/characters/gunslingers.webp" width="1536" height="1024" />
+  </svg>;
 }
 
 export function WesternBtn({
@@ -168,8 +143,8 @@ export function WesternBtn({
           : primary
             ? 'linear-gradient(180deg, #e0b04a 0%, #8a621e 100%)'
             : 'linear-gradient(180deg, #2b4149 0%, #182c35 100%)',
-        color: disabled ? '#6b4423' : primary ? '#1a0e08' : '#f4e9d6',
-        border: `2px solid ${primary ? '#ffd875' : '#6b4423'}`,
+        color: disabled ? '#b4c1b5' : primary ? '#1a0e08' : '#f4e9d6',
+        border: `2px solid ${disabled ? '#728479' : primary ? '#ffd875' : '#6b4423'}`,
         borderRadius: 4,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.6 : 1,

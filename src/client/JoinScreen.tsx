@@ -28,25 +28,25 @@ export default function JoinScreen({ initialCode, initialName, error, onJoin }: 
     border: '2px solid #6b4423',
     borderRadius: 4,
     color: '#1a0e08',
-    outline: 'none',
+    fontFamily: "'Outfit', sans-serif",
   };
 
   return (
     <WesternBackdrop>
       <form className="join-form"
         onSubmit={handleSubmit}
-        style={{ position: 'relative', zIndex: 2, minHeight: '100vh', display: 'flex', flexDirection: 'column', padding: 24, gap: 20 }}
+        style={{ position: 'relative', zIndex: 2, minHeight: '100svh', display: 'flex', flexDirection: 'column', width: '100%', maxWidth: 460, margin: 'auto', padding: '32px 24px 80px', gap: 20 }}
       >
-        <div style={{ textAlign: 'center', marginTop: 30 }}>
-          <StarEmblem size={64} />
-          <h1 style={{ ...S.title, fontSize: 36, margin: '12px 0 4px' }}>RIDE IN</h1>
-          <div style={{ ...S.serif, color: '#d9cbb0', fontSize: 16, opacity: 0.9 }}>Stake yer claim on a slot</div>
+        <div style={{ textAlign: 'center', marginTop: 0 }}>
+          <StarEmblem size={44} />
+          <h1 style={{ ...S.title, fontSize: 30, margin: '12px 0 4px' }}>RIDE IN</h1>
+          <div style={{ fontFamily: "'Outfit', sans-serif", color: '#d9cbb0', fontSize: 16, opacity: 0.9 }}>Your phone is your controller</div>
         </div>
 
         <div style={{ ...S.paper, padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label>
             <div style={{ ...S.mono, fontSize: 10, letterSpacing: 2, color: '#6b4423', fontWeight: 'bold', marginBottom: 6 }}>
-              YER NAME
+              YOUR NAME
             </div>
             <input
               type="text"
@@ -57,8 +57,8 @@ export default function JoinScreen({ initialCode, initialName, error, onJoin }: 
               style={{
                 ...inputBase,
                 padding: '14px',
-                ...S.serif,
-                fontSize: 20,
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: 18,
                 letterSpacing: 1,
               }}
             />
@@ -75,11 +75,11 @@ export default function JoinScreen({ initialCode, initialName, error, onJoin }: 
               maxLength={4}
               style={{
                 ...inputBase,
-                padding: '20px 14px',
-                ...S.title,
-                fontSize: 44,
+                padding: '14px',
+                ...S.mono,
+                fontSize: 32,
                 color: '#3e2417',
-                letterSpacing: 14,
+                letterSpacing: 10,
                 textAlign: 'center',
               }}
             />
@@ -103,11 +103,9 @@ export default function JoinScreen({ initialCode, initialName, error, onJoin }: 
           </div>
         )}
 
-        <div style={{ flex: 1 }} />
-
         <WesternBtn primary big type="submit" disabled={!canJoin}>▶ ENTER SALOON</WesternBtn>
         <div style={{ ...S.mono, fontSize: 10, color: '#d9cbb0', textAlign: 'center', opacity: 0.6, letterSpacing: 2 }}>
-          OR SCAN THE HOST'S POSTER
+          FIND THE ROOM CODE ON THE HOST SCREEN
         </div>
       </form>
     </WesternBackdrop>

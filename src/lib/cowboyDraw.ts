@@ -1,3 +1,4 @@
+import { drawSpriteCowboy, drawSpriteHat } from './cowboySprites';
 import type { Team } from '../../shared/types';
 export const COL = {
   sheriff: '#549d9d',
@@ -355,6 +356,7 @@ export interface CowboyPose {
   hat?: boolean;
 }
 export function drawCowboy(c: Canvas, team: Team, facing: 1 | -1, time: number, seed = 0, pose: CowboyPose = {}) {
+  if (drawSpriteCowboy(c, team, facing, time, seed, pose)) return;
   const law = team === 'sheriffs',
     coat = law ? COL.sheriff : COL.outlaw,
     dark = law ? COL.sheriffDark : COL.outlawDark,
@@ -770,6 +772,7 @@ export function drawCowboy(c: Canvas, team: Team, facing: 1 | -1, time: number, 
 }
 // A loose hat, centred on its brim, uses the same silhouette as the worn hat.
 export function drawHat(ctx: Canvas, team: Team) {
+  if (drawSpriteHat(ctx, team)) return;
   ctx.save();
   ctx.translate(0, 42);
   drawHatShape(ctx, team === 'sheriffs');

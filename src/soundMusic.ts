@@ -194,9 +194,9 @@ export function makeNoise(c: BaseAudioContext, durationSec: number, color: 'whit
 export type PluckKind = 'nylon' | 'bass' | 'twang';
 
 const KS_PARAMS: Record<PluckKind, { decay: number; bright: number }> = {
-  nylon: { decay: 1.7, bright: 0.5 },
+  nylon: { decay: 1.9, bright: 0.32 },
   bass: { decay: 1.5, bright: 0.28 },
-  twang: { decay: 2.3, bright: 0.85 },
+  twang: { decay: 1.6, bright: 0.48 },
 };
 
 interface KS { buffer: AudioBuffer; rate: number }
@@ -272,38 +272,15 @@ export function pluck(c: BaseAudioContext, dest: AudioNode, freq: number, when: 
 }
 
 // ---- The score -----------------------------------------------------------
-//
-// 8 bars of 4/4, eighth-note grid, Andalusian-ish Am | Am | G | G | F | F | E | E.
-// Nylon guitar ostinato + bass on 1 and 3, whistle melody on every other
-// pass, wind underneath. Intensity adds tempo, shaker/kick/brush and finally
-// a tremolo string pad.
-
-interface Chord { root: number; fifth: number; g: [number, number, number, number] }
-const CHORDS: Chord[] = [
-  { root: 45, fifth: 40, g: [52, 57, 60, 64] }, // Am
-  { root: 43, fifth: 38, g: [50, 55, 59, 62] }, // G
-  { root: 41, fifth: 36, g: [53, 57, 60, 65] }, // F
-  { root: 40, fifth: 35, g: [52, 56, 59, 64] }, // E (major — harmonic minor V)
+// A slow, fingerpicked nylon guitar and a restrained bass. Every bar has rests;
+// intensity adds a light wooden brush, never another competing lead voice.
+const CHORDS = [
+  { root: 45, fifth: 40, notes: [52, 57, 60, 64] },
+  { root: 43, fifth: 38, notes: [50, 55, 59, 62] },
+  { root: 41, fifth: 36, notes: [53, 57, 60, 65] },
+  { root: 40, fifth: 35, notes: [52, 56, 59, 64] },
 ];
 const PROG = [0, 0, 1, 1, 2, 2, 3, 3];
-const PATTERN = [0, 2, 3, 2, 1, 2, 3, 2];
-const STEPS_PER_BAR = 8;
-const STEPS_PER_LOOP = STEPS_PER_BAR * PROG.length;
-
-// [beat (quarter notes from loop start), midi, length in beats]
-const WHISTLE: Array<[number, number, number]> = [
-  [0, 76, 1.5], [1.5, 81, 2.5],
-  [4.5, 79, 0.5], [5, 76, 3],
-  [8, 74, 1.5], [9.5, 79, 2.5],
-  [12.5, 77, 0.5], [13, 74, 3],
-  [16, 72, 1], [17, 77, 1], [18, 81, 2],
-  [20.5, 79, 0.5], [21, 77, 1], [22, 76, 2],
-  [24, 71, 1], [25, 76, 1], [26, 80, 2],
-  [28, 76, 3.5],
-];
-
-const BASE_BPM = 90;
-
 export interface MusicEnv {
   ctx: AudioContext;
   dest: AudioNode;
@@ -313,231 +290,66 @@ export interface MusicEnv {
   isMuted: () => boolean;
   intensity: number;
 }
-
 export interface MusicHandle {
   stop: () => void;
   setIntensity: (level: number) => void;
 }
-
 export function startMusic(env: MusicEnv): MusicHandle {
   const c = env.ctx;
-  const t0 = c.currentTime;
   const owned: AudioNode[] = [];
   const keep = <T extends AudioNode>(n: T): T => { owned.push(n); return n; };
-  const lowpass = (freq: number, q = 0.7): BiquadFilterNode => {
-    const f = keep(c.createBiquadFilter());
-    f.type = 'lowpass';
-    f.frequency.value = freq;
-    f.Q.value = q;
-    return f;
-  };
-  const gainNode = (v: number): GainNode => {
-    const g = keep(c.createGain());
-    g.gain.value = v;
-    return g;
-  };
-
-  // Master fade for the whole score
   const bus = keep(c.createGain());
-  bus.gain.setValueAtTime(0, t0);
-  bus.gain.linearRampToValueAtTime(1, t0 + 1.5);
+  bus.gain.setValueAtTime(0, c.currentTime);
+  bus.gain.linearRampToValueAtTime(1, c.currentTime + 1.8);
   bus.connect(env.dest);
-
-  const revSend = gainNode(1);
-  if (env.reverb) revSend.connect(env.reverb);
-
-  // Guitar: body bump + gentle lowpass, slightly left, generous reverb.
-  const guitarIn = gainNode(1);
-  const gBody = keep(c.createBiquadFilter());
-  gBody.type = 'peaking';
-  gBody.frequency.value = 240;
-  gBody.Q.value = 0.9;
-  gBody.gain.value = 4;
-  const gPan = makePanner(c, -0.22);
-  keep(gPan.node);
-  guitarIn.connect(gBody).connect(lowpass(3400)).connect(gPan.node);
-  gPan.node.connect(bus);
-  gPan.node.connect(gainNode(0.35)).connect(revSend);
-
-  // Bass
-  const bassIn = gainNode(1);
-  bassIn.connect(lowpass(650)).connect(bus);
-
-  // Whistle: slightly right, drenched in reverb (Morricone)
-  const whistleIn = gainNode(1);
-  const wPan = makePanner(c, 0.18);
-  keep(wPan.node);
-  whistleIn.connect(lowpass(4500)).connect(wPan.node);
-  wPan.node.connect(bus);
-  wPan.node.connect(gainNode(0.55)).connect(revSend);
-
-  // Percussion
-  const percIn = gainNode(1);
-  percIn.connect(bus);
-
-  // Tremolo string pad (only audible at high intensity)
-  const padIn = gainNode(1);
-  const padTrem = gainNode(0.55);
-  const padLevel = gainNode(0);
-  const padLp = lowpass(2200);
-  padIn.connect(padTrem).connect(padLevel).connect(padLp).connect(bus);
-  padLp.connect(gainNode(0.4)).connect(revSend);
-  const tremLfo = keep(c.createOscillator());
-  tremLfo.frequency.value = 7.5;
-  tremLfo.connect(gainNode(0.45)).connect(padTrem.gain);
-  tremLfo.start(t0);
-
-  // Wind bed: looping brown noise through a slowly breathing lowpass
-  const windSrc = keep(c.createBufferSource());
-  windSrc.buffer = env.brown;
-  windSrc.loop = true;
-  const windLp = lowpass(300, 0.6);
-  const windLfo = keep(c.createOscillator());
-  windLfo.frequency.value = 0.07;
-  windLfo.connect(gainNode(140)).connect(windLp.frequency);
-  windSrc.connect(windLp).connect(gainNode(0.32)).connect(bus);
-  windLfo.start(t0);
-  windSrc.start(t0);
-
-  // ---- Instruments ----
-  const kick = (t: number, g: number): void => {
-    tone(c, { dest: percIn, when: t, type: 'sine', freq: 130, freqEnd: 45, glide: 0.08, dur: 0.22, gain: g, attack: 0.002 });
-    burst(c, { dest: percIn, when: t, buffer: env.white, dur: 0.012, gain: g * 0.25, filter: { type: 'lowpass', freq: 2000 } });
-  };
-  const shaker = (t: number, g: number): void => {
-    burst(c, { dest: percIn, when: t, buffer: env.white, dur: 0.04, gain: g, attack: 0.004, filter: { type: 'highpass', freq: 5500 } });
-  };
-  const brush = (t: number, g: number): void => {
-    burst(c, { dest: percIn, when: t, buffer: env.white, dur: 0.11, gain: g, attack: 0.002, filter: { type: 'bandpass', freq: 1900, q: 0.8 } });
-  };
-  const padChord = (chord: Chord, t: number, len: number): void => {
-    for (const n of chord.g.slice(1)) {
-      const f = midiToFreq(n + 12);
-      for (const det of [-8, 8]) {
-        tone(c, {
-          dest: padIn, when: t, type: 'sawtooth', freq: f, detune: det,
-          dur: len + 0.35, gain: 0.05, attack: 0.25, hold: len - 0.25, sustain: 0.9,
+  const guitar = keep(c.createGain());
+  const body = keep(c.createBiquadFilter());
+  body.type = 'peaking'; body.frequency.value = 230; body.Q.value = 0.8; body.gain.value = 2;
+  const warmth = keep(c.createBiquadFilter());
+  warmth.type = 'lowpass'; warmth.frequency.value = 2300; warmth.Q.value = 0.5;
+  const pan = makePanner(c, -0.13); keep(pan.node);
+  guitar.connect(body).connect(warmth).connect(pan.node).connect(bus);
+  const bass = keep(c.createBiquadFilter());
+  bass.type = 'lowpass'; bass.frequency.value = 480; bass.Q.value = 0.5; bass.connect(bus);
+  let level = clamp(env.intensity, 0, 1), target = level;
+  let step = 0, nextTime = c.currentTime + 0.1, stopped = false;
+  const tick = () => {
+    if (stopped) return;
+    const now = c.currentTime;
+    const lookahead = typeof document !== 'undefined' && document.hidden ? 1.2 : 0.15;
+    if (nextTime < now - 0.05) nextTime = now + 0.03;
+    while (nextTime < now + lookahead) {
+      level += (target - level) * 0.2;
+      const eighth = 60 / (76 + level * 4) / 2;
+      const slot = step % 8, bar = Math.floor(step / 8) % 8;
+      const chord = CHORDS[PROG[bar]];
+      if (!env.isMuted()) {
+        // Four fingers, with the last beat left open on alternating bars.
+        const pattern = bar % 2 ? [0, -1, 2, -1, 1, -1, -1, -1] : [0, -1, 2, 3, -1, 1, -1, -1];
+        const note = pattern[slot];
+        if (note >= 0) pluck(c, guitar, midiToFreq(chord.notes[note]), nextTime + Math.random() * 0.006, slot === 0 ? 0.38 : 0.28, 'nylon');
+        if (slot === 0) pluck(c, bass, midiToFreq(chord.root), nextTime, 0.48, 'bass');
+        if (slot === 4 && bar % 2 === 0) pluck(c, bass, midiToFreq(chord.fifth), nextTime, 0.3, 'bass');
+        // A sparse higher guitar answer replaces the high whistle.
+        if (bar % 2 === 1 && slot === 5) pluck(c, guitar, midiToFreq(chord.notes[3]), nextTime, 0.2, 'nylon');
+        if (level > 0.5 && (slot === 2 || slot === 6)) burst(c, {
+          dest: bus, when: nextTime, buffer: env.brown, dur: 0.065,
+          gain: 0.1 * (level - 0.5), attack: 0.008,
+          filter: { type: 'bandpass', freq: 900, q: 0.6 },
         });
       }
+      nextTime += eighth; step++;
     }
   };
-
-  let lastWhistleFreq = 0;
-  let lastWhistleEnd = -1;
-  const whistle = (freq: number, t: number, dur: number): void => {
-    const from = t - lastWhistleEnd < 0.06 && lastWhistleFreq > 0 ? lastWhistleFreq : freq * 0.93;
-    const end = t + dur + 0.08;
-    const osc = c.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(from, t);
-    osc.frequency.exponentialRampToValueAtTime(freq, t + 0.07);
-    const lfo = c.createOscillator();
-    lfo.frequency.value = 5.1 + Math.random() * 0.6;
-    const lg = c.createGain();
-    lg.gain.setValueAtTime(0, t);
-    lg.gain.setValueAtTime(0, t + 0.12);
-    lg.gain.linearRampToValueAtTime(16, t + Math.min(dur, 0.6) + 0.12);
-    const tri = c.createBiquadFilter(); // tame triangle harmonics → near-sine whistle
-    tri.type = 'lowpass';
-    tri.frequency.value = freq * 1.6;
-    const g = c.createGain();
-    g.gain.setValueAtTime(FLOOR, t);
-    g.gain.exponentialRampToValueAtTime(0.22, t + 0.05);
-    g.gain.exponentialRampToValueAtTime(0.17, t + Math.max(0.06, dur - 0.03));
-    g.gain.exponentialRampToValueAtTime(FLOOR, end);
-    lfo.connect(lg).connect(osc.detune);
-    osc.connect(tri).connect(g).connect(whistleIn);
-    osc.onended = () => [osc, lfo, lg, tri, g].forEach(safeDisconnect);
-    osc.start(t); lfo.start(t);
-    osc.stop(end + 0.05); lfo.stop(end + 0.05);
-    lastWhistleFreq = freq;
-    lastWhistleEnd = t + dur;
-  };
-
-  // ---- Scheduler ----
-  let level = clamp(env.intensity, 0, 1);
-  let target = level;
-  let step = 0;
-  let nextTime = t0 + 0.1;
-  let stopped = false;
-
-  const scheduleStep = (s: number, t: number, eighth: number): void => {
-    const sib = s % STEPS_PER_BAR;
-    const bar = Math.floor(s / STEPS_PER_BAR) % PROG.length;
-    const loop = Math.floor(s / STEPS_PER_LOOP);
-    const chord = CHORDS[PROG[bar]];
-    const whistleLoop = loop % 2 === 1;
-    const human = () => Math.random() * 0.008;
-
-    // Guitar ostinato
-    const accent = sib === 0 ? 0.5 : sib === 4 ? 0.42 : 0.3 + Math.random() * 0.06;
-    pluck(c, guitarIn, midiToFreq(chord.g[PATTERN[sib]]), t + human(), accent * (whistleLoop ? 0.8 : 1), 'nylon');
-
-    // Bass on 1 and 3, gallop pickup at higher intensity
-    if (sib === 0) pluck(c, bassIn, midiToFreq(chord.root), t, 0.75, 'bass');
-    if (sib === 4) pluck(c, bassIn, midiToFreq(chord.fifth), t, 0.55, 'bass');
-    if (sib === 7 && level > 0.55) pluck(c, bassIn, midiToFreq(chord.root), t + eighth * 0.5, 0.35, 'bass');
-
-    // Whistle melody on alternate passes
-    if (whistleLoop) {
-      const b0 = (bar * STEPS_PER_BAR + sib) / 2;
-      for (const [beat, m, len] of WHISTLE) {
-        if (beat >= b0 && beat < b0 + 0.5) {
-          whistle(midiToFreq(m + 12), t + (beat - b0) * 2 * eighth, len * 2 * eighth);
-        }
-      }
-    }
-
-    // Percussion layers scale in with intensity
-    if (level > 0.3 && sib % 2 === 1) {
-      shaker(t + human(), 0.14 * ((level - 0.3) / 0.7) * (sib === 3 || sib === 7 ? 1 : 0.7));
-    }
-    if (level > 0.5 && (sib === 0 || sib === 4)) kick(t, 0.55 * ((level - 0.5) / 0.5));
-    if (level > 0.7 && (sib === 2 || sib === 6)) brush(t + human(), 0.12 * ((level - 0.7) / 0.3));
-
-    // Tremolo strings at the top end
-    if (sib === 0) {
-      const pad = clamp((level - 0.72) / 0.28, 0, 1);
-      padLevel.gain.setTargetAtTime(pad, t, 0.4);
-      if (pad > 0.02) padChord(chord, t, STEPS_PER_BAR * eighth);
-    }
-  };
-
-  const tick = (): void => {
-    if (stopped) return;
-    const nowT = c.currentTime;
-    const hidden = typeof document !== 'undefined' && document.hidden;
-    const lookahead = hidden ? 1.2 : 0.15; // background tabs throttle timers to ~1s
-    if (nextTime < nowT - 0.05) nextTime = nowT + 0.03; // fell behind: resync, no burst
-    while (nextTime < nowT + lookahead) {
-      level += (target - level) * 0.2;
-      const eighth = 60 / (BASE_BPM * (1 + 0.25 * level)) / 2;
-      if (!env.isMuted()) {
-        try { scheduleStep(step, nextTime, eighth); } catch { /* never kill the loop */ }
-      }
-      nextTime += eighth;
-      step++;
-    }
-  };
-  const timer = setInterval(tick, 25);
-  tick();
-
+  const timer = setInterval(tick, 25); tick();
   return {
-    setIntensity: (l: number) => { target = clamp(l, 0, 1); },
+    setIntensity: (value) => { target = clamp(value, 0, 1); },
     stop: () => {
       if (stopped) return;
-      stopped = true;
-      clearInterval(timer);
-      const t = c.currentTime;
-      bus.gain.cancelScheduledValues(t);
-      bus.gain.setValueAtTime(bus.gain.value, t);
-      bus.gain.linearRampToValueAtTime(0, t + 0.6);
-      setTimeout(() => {
-        try { windSrc.stop(); } catch { /* already stopped */ }
-        try { windLfo.stop(); } catch { /* already stopped */ }
-        try { tremLfo.stop(); } catch { /* already stopped */ }
-        owned.forEach(safeDisconnect);
-      }, 750);
+      stopped = true; clearInterval(timer);
+      bus.gain.cancelScheduledValues(c.currentTime);
+      bus.gain.setTargetAtTime(0, c.currentTime, 0.12);
+      setTimeout(() => owned.forEach(safeDisconnect), 700);
     },
   };
 }

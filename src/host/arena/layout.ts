@@ -44,7 +44,7 @@ export const barrelX = (L: Layout, team: Team) => (team === 'sheriffs' ? L.sheri
 export const BADGE_MIN_Y = 140;
 export const facingOf = (team: Team): 1 | -1 => (team === 'sheriffs' ? 1 : -1);
 /** Height of the gun hand above the feet, in canvas px. */
-export const gunHeight = (L: Layout) => 64 * L.s;
+export const gunHeight = (L: Layout) => 92 * L.s;
 /** Height of a barrel, in canvas px. */
 export const barrelHeight = (L: Layout) => 74 * L.s;
 

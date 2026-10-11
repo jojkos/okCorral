@@ -7,10 +7,9 @@
  *     (see soundMusic.ts)
  *   - setMuted() / setVolume() — global controls
  *
- * Graph:  sfx bus ──┐
- *         echo (canyon ping-pong delay) ──┤
- *         reverb (generated impulse) ─────┼─▶ compressor ─▶ limiter ─▶ master ─▶ out
- *         music bus (0.25) ─▶ duck ───────┘
+ * Graph: effects + short echo/reverb → effects volume + warmth ─┐
+ *        fingerpicked score → music volume → duck ─────────────┼→ compressor
+ *        → limiter → soft peak ceiling → master → output.
  *
  * AudioContext is created lazily and resumed on the first user gesture. When
  * Web Audio is unavailable (SSR, tests) every export is a silent no-op.
@@ -48,6 +47,41 @@ function writeMuted(v: boolean): void {
   try { globalThis.localStorage?.setItem(MUTE_KEY, String(v)); } catch { /* storage unavailable */ }
 }
 
+export interface AudioPreferences {
+  musicEnabled: boolean;
+  effectsEnabled: boolean;
+  musicVolume: number;
+  effectsVolume: number;
+}
+const AUDIO_KEY = 'okCorral-audio';
+const defaults: AudioPreferences = { musicEnabled: true, effectsEnabled: true, musicVolume: 0.5, effectsVolume: 0.7 };
+function readAudioPreferences(): AudioPreferences {
+  try {
+    const value = JSON.parse(globalThis.localStorage?.getItem(AUDIO_KEY) || '{}');
+    return {
+      musicEnabled: typeof value.musicEnabled === 'boolean' ? value.musicEnabled : true,
+      effectsEnabled: typeof value.effectsEnabled === 'boolean' ? value.effectsEnabled : true,
+      musicVolume: Number.isFinite(value.musicVolume) ? Math.max(0, Math.min(1, value.musicVolume)) : defaults.musicVolume,
+      effectsVolume: Number.isFinite(value.effectsVolume) ? Math.max(0, Math.min(1, value.effectsVolume)) : defaults.effectsVolume,
+    };
+  } catch { return { ...defaults }; }
+}
+let audioPreferences = readAudioPreferences();
+export function getAudioPreferences(): AudioPreferences { return { ...audioPreferences }; }
+export function setAudioPreferences(next: Partial<AudioPreferences>): void {
+  audioPreferences = {
+    musicEnabled: typeof next.musicEnabled === 'boolean' ? next.musicEnabled : audioPreferences.musicEnabled,
+    effectsEnabled: typeof next.effectsEnabled === 'boolean' ? next.effectsEnabled : audioPreferences.effectsEnabled,
+    musicVolume: Number.isFinite(next.musicVolume) ? Math.max(0, Math.min(1, next.musicVolume!)) : audioPreferences.musicVolume,
+    effectsVolume: Number.isFinite(next.effectsVolume) ? Math.max(0, Math.min(1, next.effectsVolume!)) : audioPreferences.effectsVolume,
+  };
+  try { globalThis.localStorage?.setItem(AUDIO_KEY, JSON.stringify(audioPreferences)); } catch { /* storage unavailable */ }
+  if (ctx && graph) {
+    graph.sfx.gain.setTargetAtTime(audioPreferences.effectsEnabled ? audioPreferences.effectsVolume * 0.8 : 0, ctx.currentTime, 0.03);
+    graph.music.gain.setTargetAtTime(audioPreferences.musicEnabled ? audioPreferences.musicVolume * 0.45 : 0, ctx.currentTime, 0.05);
+  }
+}
+
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
 const wall = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
@@ -75,7 +109,7 @@ let music: MusicHandle | null = null;
 let musicIntensity = 0;
 
 function makeImpulse(c: BaseAudioContext, dur: number): AudioBuffer {
-  // Stereo decaying noise that darkens as it decays — a big open-air space.
+  // Short, dark room response; kept behind the direct material sound.
   const sr = c.sampleRate;
   const len = Math.floor(sr * dur);
   const buf = c.createBuffer(2, len, sr);
@@ -107,7 +141,16 @@ function buildGraph(c: AudioContext): Graph {
   limiter.ratio.value = 20;
   limiter.attack.value = 0.001;
   limiter.release.value = 0.08;
-  limiter.connect(master);
+  // The compressor can overshoot on coincident volleys. This final, normally
+  // transparent soft knee also bounds peaks when every volume is at maximum.
+  const ceiling = c.createWaveShaper();
+  const curve = new Float32Array(4097);
+  for (let i = 0; i < curve.length; i++) {
+    const x = i / (curve.length - 1) * 2 - 1, magnitude = Math.abs(x);
+    curve[i] = Math.sign(x) * (magnitude <= 0.7 ? magnitude : 0.7 + 0.2 * (1 - Math.exp(-(magnitude - 0.7) / 0.2)));
+  }
+  ceiling.curve = curve;
+  limiter.connect(ceiling).connect(master);
 
   const comp = c.createDynamicsCompressor();
   comp.threshold.value = -12;
@@ -118,17 +161,18 @@ function buildGraph(c: AudioContext): Graph {
   comp.connect(limiter);
 
   const sfx = c.createGain();
-  sfx.gain.value = 0.9;
-  sfx.connect(comp);
+  sfx.gain.value = audioPreferences.effectsEnabled ? audioPreferences.effectsVolume * 0.8 : 0;
+  const sfxWarmth = c.createBiquadFilter();
+  sfxWarmth.type = 'lowpass'; sfxWarmth.frequency.value = 4200; sfxWarmth.Q.value = 0.5;
+  sfx.connect(sfxWarmth).connect(comp);
 
   const duck = c.createGain();
   duck.connect(comp);
   const musicBus = c.createGain();
-  musicBus.gain.value = 0.25;
+  musicBus.gain.value = audioPreferences.musicEnabled ? audioPreferences.musicVolume * 0.45 : 0;
   musicBus.connect(duck);
 
-  // Canyon echo: two cross-fed delays ping-ponging L/R, darker each pass.
-  // Repeats at ~0.21s, 0.47s, 0.73s (1, 0.45, 0.19) — 2-3 audible, then gone.
+  // Quiet stereo reflection with little feedback; avoids repeated sharp attacks.
   const echoIn = c.createGain();
   const echoHp = c.createBiquadFilter();
   echoHp.type = 'highpass';
@@ -144,25 +188,25 @@ function buildGraph(c: AudioContext): Graph {
   lpB.type = 'lowpass';
   lpB.frequency.value = 1700;
   const fbA = c.createGain();
-  fbA.gain.value = 0.45;
+  fbA.gain.value = 0.16;
   const fbB = c.createGain();
-  fbB.gain.value = 0.42;
+  fbB.gain.value = 0.12;
   echoIn.connect(echoHp).connect(dA).connect(lpA).connect(fbA).connect(dB).connect(lpB).connect(fbB).connect(dA);
   const echoOut = c.createGain();
-  echoOut.gain.value = 0.55;
+  echoOut.gain.value = 0.2;
   const panA = makePanner(c, -0.55);
   const panB = makePanner(c, 0.55);
   lpA.connect(panA.node).connect(echoOut);
   lpB.connect(panB.node).connect(echoOut);
-  echoOut.connect(comp);
+  echoOut.connect(sfx);
 
   // Reverb
   const reverbIn = c.createGain();
   const conv = c.createConvolver();
-  conv.buffer = makeImpulse(c, 2.8);
+  conv.buffer = makeImpulse(c, 0.65);
   const revOut = c.createGain();
-  revOut.gain.value = 0.5;
-  reverbIn.connect(conv).connect(revOut).connect(comp);
+  revOut.gain.value = 0.18;
+  reverbIn.connect(conv).connect(revOut).connect(sfx);
 
   return {
     master,
@@ -229,7 +273,7 @@ export function setMuted(next: boolean): void {
 }
 export function isMuted(): boolean { return muted; }
 export function setVolume(v: number): void {
-  userVolume = clamp(v, 0, 1);
+  userVolume = clamp(Number.isFinite(v) ? v : userVolume, 0, 1);
   applyMasterGain();
 }
 
@@ -249,7 +293,7 @@ interface Voice {
  * on in the shared buses).
  */
 function voice(pan = 0, o: { echo?: number; reverb?: number; life?: number; gain?: number } = {}): Voice | null {
-  if (muted) return null;
+  if (muted || !audioPreferences.effectsEnabled || audioPreferences.effectsVolume === 0) return null;
   const c = ensureCtx();
   if (!c || !graph) return null;
   resumeIfNeeded();
@@ -306,7 +350,11 @@ function density(kind: string, win = 0.08): number {
   recent[kind] = arr;
   return arr.length;
 }
-const volleyScale = (kind: string): number => Math.max(0.3, 1 / Math.sqrt(density(kind)));
+const volleyScale = (kind: string): number => Math.max(0.16, 1 / density(kind, 0.12));
+
+function repeated(kind: string, seconds: number): boolean {
+  return density(kind, seconds) > 1;
+}
 
 /** Temporarily pull the music down under a big moment. */
 function duckMusic(depth: number, hold: number, release: number): void {
@@ -320,107 +368,25 @@ function duckMusic(depth: number, hold: number, release: number): void {
   p.linearRampToValueAtTime(1, t + 0.06 + hold + release);
 }
 
-/** Two detuned saws through an enveloped lowpass — trumpet / trombone. */
-function brass(
-  v: Voice,
-  freq: number,
-  at: number,
-  dur: number,
-  gain: number,
-  o: { bright?: number; vib?: number; wah?: boolean; wobble?: boolean } = {},
-): void {
-  const { c } = v;
-  const t = v.t + at;
-  const end = t + dur;
-  const bright = o.bright ?? 5;
-  const lp = c.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.Q.value = o.wah ? 4 : 1.2;
-  if (o.wah) {
-    lp.frequency.setValueAtTime(Math.max(200, freq * 1.1), t);
-    lp.frequency.exponentialRampToValueAtTime(Math.min(freq * bright, 5000), t + dur * 0.35);
-    lp.frequency.exponentialRampToValueAtTime(Math.max(freq * 1.4, 280), end);
-  } else {
-    lp.frequency.setValueAtTime(freq * 1.5, t);
-    lp.frequency.exponentialRampToValueAtTime(Math.min(freq * bright, 6000), t + 0.045);
-    lp.frequency.exponentialRampToValueAtTime(Math.min(freq * 2.6, 4000), end);
-  }
-  const g = c.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(gain, t + 0.03);
-  g.gain.exponentialRampToValueAtTime(gain * 0.7, t + Math.max(0.05, dur * 0.75));
-  g.gain.exponentialRampToValueAtTime(0.0001, end + 0.09);
-  const nodes: AudioNode[] = [lp, g];
-  const oscs = [-7, 6].map((det) => {
-    const osc = c.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(freq * 0.97, t); // lip "blip" into the note
-    osc.frequency.exponentialRampToValueAtTime(freq, t + 0.04);
-    osc.detune.value = det;
-    osc.connect(lp);
-    nodes.push(osc);
-    return osc;
-  });
-  if (o.vib) {
-    const lfo = c.createOscillator();
-    lfo.frequency.value = o.wobble ? 5.6 : 5.2;
-    const lg = c.createGain();
-    lg.gain.setValueAtTime(0, t);
-    lg.gain.setValueAtTime(0, t + 0.12);
-    lg.gain.linearRampToValueAtTime(o.vib, t + 0.12 + Math.min(0.35, dur * 0.4));
-    lfo.connect(lg);
-    oscs.forEach((osc) => lg.connect(osc.detune));
-    lfo.start(t);
-    lfo.stop(end + 0.15);
-    nodes.push(lfo, lg);
-  }
-  if (o.wobble) {
-    // Mute "wah-wah-wah" on the filter
-    const lfo = c.createOscillator();
-    lfo.frequency.value = 3.2;
-    const lg = c.createGain();
-    lg.gain.value = 380;
-    lp.frequency.cancelScheduledValues(t);
-    lp.frequency.setValueAtTime(700, t);
-    lfo.connect(lg).connect(lp.frequency);
-    lfo.start(t);
-    lfo.stop(end + 0.15);
-    nodes.push(lfo, lg);
-  }
-  lp.connect(g).connect(v.in);
-  oscs[0].onended = () => nodes.forEach(safeDisconnect);
-  oscs.forEach((osc) => { osc.start(t); osc.stop(end + 0.15); });
-}
-
-// ---- Guns ----------------------------------------------------------------
-
 export function playGunshot(pan = 0): void {
-  const v = voice(pan, { echo: 0.32, reverb: 0.08, life: 0.5, gain: volleyScale('shot') });
+  const v = voice(pan, { echo: 0.12, reverb: 0.04, life: 0.5, gain: volleyScale('shot') });
   if (!v) return;
   const r = rand(0.91, 1.09); // per-shot pitch so volleys don't sound cloned
   const bite = rand(0.85, 1.15); // per-shot crack brightness
   // Crack — the supersonic snap
-  N(v, { dur: 0.045, gain: 0.5, attack: 0.0008, filter: { type: 'highpass', freq: 1500 * r }, filter2: { type: 'bandpass', freq: 3200 * r * bite, q: 0.7 } });
+  N(v, { dur: 0.045, gain: 0.28, attack: 0.002, filter: { type: 'highpass', freq: 1500 * r }, filter2: { type: 'bandpass', freq: 2300 * r * bite, q: 0.7 } });
   // Body — muzzle blast, lowpass closing fast
   N(v, { dur: 0.2, gain: 0.38, attack: 0.001, filter: { type: 'lowpass', freq: 1100 * r, freqEnd: 280, sweep: 0.12, q: 0.8 } });
   // Thump — chest punch
-  T(v, { type: 'sine', freq: 150 * r, freqEnd: 42, glide: 0.09, dur: 0.17, gain: 0.55, attack: 0.001 });
+  T(v, { type: 'sine', freq: 150 * r, freqEnd: 42, glide: 0.09, dur: 0.17, gain: 0.38, attack: 0.004 });
   // Tail — rumble that feeds the canyon echo
   N(v, { at: 0.01, dur: 0.38, gain: 0.1, attack: 0.012, filter: { type: 'bandpass', freq: 650 * r, q: 0.6 } });
 }
 
 export function playFleshHit(pan = 0): void {
-  const v = voice(pan, { echo: 0.1, life: 0.4, gain: volleyScale('impact') });
-  if (!v) return;
-  const r = rand(0.92, 1.08);
-  // Meaty thud + slap
-  N(v, { dur: 0.14, gain: 0.45, filter: { type: 'lowpass', freq: 380 } });
-  N(v, { dur: 0.03, gain: 0.2, filter: { type: 'bandpass', freq: 1200, q: 1.2 } });
-  T(v, { type: 'sine', freq: 130 * r, freqEnd: 48, glide: 0.12, dur: 0.18, gain: 0.55, attack: 0.001 });
-  // Grunt: a short buzzy glottal sweep through two vowel formants ("uh")
-  const grunt = { type: 'sawtooth' as OscillatorType, freq: 125 * r, freqEnd: 85 * r, dur: 0.17, attack: 0.015, at: 0.03 };
-  T(v, { ...grunt, gain: 0.32, filter: { type: 'bandpass', freq: 640, q: 5 } });
-  T(v, { ...grunt, gain: 0.16, filter: { type: 'bandpass', freq: 1150, q: 6 } });
+  const v = voice(pan, { life: 0.3, gain: volleyScale('impact') }); if (!v) return;
+  N(v, { dur: 0.1, gain: 0.24, attack: 0.004, filter: { type: 'lowpass', freq: 650 } });
+  T(v, { freq: 110, freqEnd: 55, dur: 0.15, gain: 0.28, attack: 0.005 });
 }
 
 export function playWoodHit(pan = 0): void {
@@ -433,39 +399,32 @@ export function playWoodHit(pan = 0): void {
   T(v, { type: 'sine', freq: 182, freqEnd: 160, dur: 0.22, gain: 0.16, attack: 0.002 });
   // Splinter crackle — a scatter of tiny bright grains
   let at = 0.008;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 4; i++) {
     at += rand(0.006, 0.022);
-    N(v, { at, dur: rand(0.01, 0.028), gain: 0.22 * (1 - i / 7), filter: { type: 'highpass', freq: 2500 }, filter2: { type: 'bandpass', freq: rand(3200, 6500), q: 3 } });
+    N(v, { at, dur: rand(0.01, 0.028), gain: 0.10 * (1 - i / 7), filter: { type: 'highpass', freq: 2500 }, filter2: { type: 'bandpass', freq: rand(1500, 2600), q: 1 } });
   }
 }
 
 export function playSpark(pan = 0): void {
-  // Bullet-on-bullet: bright metallic CLANG with inharmonic ringing partials
-  const v = voice(pan, { echo: 0.25, reverb: 0.1, life: 0.9, gain: volleyScale('impact') });
-  if (!v) return;
-  const base = 1150 * rand(0.95, 1.05);
-  const partials: Array<[number, number, number]> = [
-    [1, 0.2, 0.7], [2.32, 0.14, 0.5], [3.86, 0.1, 0.4], [5.41, 0.07, 0.28], [7.03, 0.05, 0.2],
-  ];
-  for (const [ratio, gain, dur] of partials) {
-    T(v, { type: 'sine', freq: base * ratio, dur, gain, attack: 0.001 });
-  }
-  T(v, { type: 'sine', freq: base + 5, dur: 0.6, gain: 0.08, attack: 0.001 }); // beating shimmer
-  N(v, { dur: 0.04, gain: 0.38, filter: { type: 'highpass', freq: 3000 } });
+  const v = voice(pan, { life: 0.3, gain: volleyScale('impact') }); if (!v) return;
+  // A short, damped metal tap rather than a sustained high clang.
+  T(v, { freq: 740, dur: 0.16, gain: 0.12, attack: 0.003 });
+  T(v, { freq: 1190, dur: 0.09, gain: 0.045, attack: 0.003 });
+  N(v, { dur: 0.024, gain: 0.1, attack: 0.003, filter: { type: 'bandpass', freq: 1700, q: 0.7 } });
 }
 
 export function playMiss(pan = 0): void {
   // Ricochet: "pyeeeww" — fast sliding whine with a tumbling wobble that
   // drifts outward and darkens into the distance.
-  const v = voice(pan, { echo: 0.35, life: 0.9, gain: volleyScale('ricochet') });
+  const v = voice(pan, { echo: 0.08, life: 0.6, gain: volleyScale('ricochet') });
   if (!v) return;
   N(v, { dur: 0.07, gain: 0.16, filter: { type: 'bandpass', freq: 900, q: 0.8 } }); // dirt puff
-  const start = rand(2500, 3500);
-  const len = rand(0.45, 0.65);
+  const start = rand(1000, 1400);
+  const len = rand(0.22, 0.32);
   T(v, {
-    at: 0.02, type: 'triangle', freq: start, freqEnd: start * rand(0.32, 0.45), dur: len, gain: 0.14, attack: 0.008,
+    at: 0.02, type: 'triangle', freq: start, freqEnd: start * rand(0.32, 0.45), dur: len, gain: 0.06, attack: 0.008,
     filter: { type: 'lowpass', freq: 6500, freqEnd: 1400 },
-    vibrato: { rate: rand(20, 32), cents: 55, ramp: 0.05 },
+    vibrato: { rate: rand(20, 32), cents: 12, ramp: 0.05 },
   });
   if (v.pan) {
     const dir = pan === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(pan);
@@ -485,10 +444,10 @@ export function playBulletImpact(hit: 'player' | 'barrel' | 'bullet' | 'miss', p
 }
 
 export function playFinalShot(): void {
-  // Slow-motion match-ender: pitched-down, enormous, ~2.5s of canyon.
-  const v = voice(0, { echo: 0.4, reverb: 0.6, life: 2.8 });
+  // A lower, rounded match-ending shot with a restrained room tail.
+  const v = voice(0, { echo: 0.12, reverb: 0.1, life: 2.8, gain: 0.5 });
   if (!v) return;
-  duckMusic(0.15, 1.8, 1.5);
+  duckMusic(0.5, 0.8, 0.8);
   N(v, { dur: 0.18, gain: 0.5, attack: 0.001, rate: 0.5, filter: { type: 'highpass', freq: 600 }, filter2: { type: 'bandpass', freq: 1400, q: 0.6 } });
   N(v, { dur: 1.4, gain: 0.6, attack: 0.002, rate: 0.4, filter: { type: 'lowpass', freq: 700, freqEnd: 120, sweep: 1.1 } });
   T(v, { type: 'sine', freq: 90, freqEnd: 24, glide: 0.9, dur: 1.3, gain: 0.75, attack: 0.002 });
@@ -499,28 +458,19 @@ export function playFinalShot(): void {
 // ---- Movement & handling ------------------------------------------------
 
 export function playSpurs(pan = 0): void {
-  const v = voice(pan, { life: 0.45, gain: volleyScale('spurs') });
-  if (!v) return;
-  const tink = (at: number, r: number, g: number) => {
-    T(v, { at, type: 'sine', freq: 4100 * r, dur: 0.12, gain: 0.07 * g, attack: 0.001 });
-    T(v, { at, type: 'sine', freq: 5650 * r, dur: 0.09, gain: 0.05 * g, attack: 0.001 });
-    T(v, { at, type: 'sine', freq: 7900 * r, dur: 0.06, gain: 0.035 * g, attack: 0.001 });
-    N(v, { at, dur: 0.01, gain: 0.05 * g, filter: { type: 'highpass', freq: 5000 } });
-  };
-  tink(0, rand(0.97, 1.03), 1);
-  const second = rand(0.09, 0.12);
-  tink(second, rand(0.94, 1.0), 0.85);
-  // rowel rattle
-  for (let i = 1; i <= 3; i++) tink(second + i * 0.016, rand(1.02, 1.1), 0.3 / i);
+  const v = voice(pan, { life: 0.25, gain: volleyScale('spurs') }); if (!v) return;
+  N(v, { dur: 0.06, gain: 0.09, attack: 0.005, filter: { type: 'bandpass', freq: 750, q: 0.6 } });
+  T(v, { at: 0.025, freq: 1250, dur: 0.075, gain: 0.026, attack: 0.003 });
+  T(v, { at: 0.10, freq: 970, dur: 0.07, gain: 0.018, attack: 0.003 });
 }
 
 export function playReloadSpin(pan = 0): void {
   const v = voice(pan, { life: 0.7 });
   if (!v) return;
   let at = 0;
-  for (let i = 0; i < 6; i++) {
-    N(v, { at, dur: 0.012, gain: 0.2, filter: { type: 'bandpass', freq: rand(3500, 4200), q: 3 } });
-    T(v, { at, type: 'triangle', freq: 2200, freqEnd: 1800, dur: 0.02, gain: 0.06, attack: 0.001 });
+  for (let i = 0; i < 4; i++) {
+    N(v, { at, dur: 0.012, gain: 0.2, filter: { type: 'bandpass', freq: rand(1300, 1800), q: 1 } });
+    T(v, { at, type: 'triangle', freq: 1000, freqEnd: 800, dur: 0.02, gain: 0.06, attack: 0.001 });
     T(v, { at, type: 'sine', freq: 900, dur: 0.015, gain: 0.05, attack: 0.001 });
     at += 0.048 + rand(-0.005, 0.005);
   }
@@ -529,7 +479,7 @@ export function playReloadSpin(pan = 0): void {
   N(v, { at, dur: 0.05, gain: 0.38, filter: { type: 'bandpass', freq: 1800, q: 1.5 } });
   T(v, { at, type: 'triangle', freq: 420, freqEnd: 200, dur: 0.08, gain: 0.26, attack: 0.001 });
   T(v, { at, type: 'sine', freq: 180, freqEnd: 110, dur: 0.1, gain: 0.22, attack: 0.001 });
-  T(v, { at, type: 'sine', freq: 3100, dur: 0.15, gain: 0.04, attack: 0.001 });
+  T(v, { at, type: 'sine', freq: 1300, dur: 0.09, gain: 0.02, attack: 0.001 });
 }
 
 export function playCoverThud(pan = 0): void {
@@ -555,86 +505,43 @@ export function playLockAction(): void {
 // ---- Death & stingers -----------------------------------------------------
 
 export function playDeath(pan = 0): void {
-  const v = voice(pan, { echo: 0.15, life: 0.8 });
-  if (!v) return;
-  // Body-drop thud + descending whistle
-  T(v, { type: 'sine', freq: 90, freqEnd: 35, glide: 0.3, dur: 0.35, gain: 0.5, attack: 0.002 });
-  N(v, { at: 0.02, brown: true, dur: 0.25, gain: 0.5, attack: 0.004, filter: { type: 'lowpass', freq: 300 } });
-  T(v, { type: 'sawtooth', freq: 420, freqEnd: 90, glide: 0.55, dur: 0.6, gain: 0.16, attack: 0.005, filter: { type: 'lowpass', freq: 1200 } });
+  const v = voice(pan, { life: 0.4, gain: volleyScale('death') }); if (!v) return;
+  T(v, { freq: 95, freqEnd: 42, dur: 0.25, gain: 0.3, attack: 0.008 });
+  N(v, { at: 0.025, brown: true, dur: 0.2, gain: 0.25, attack: 0.01, filter: { type: 'lowpass', freq: 380 } });
 }
 
 export function playKillSting(): void {
-  // "dah-DAHHH": Bb grace falling onto an A-minor brass stab (Phrygian sigh),
-  // doubled by a twangy baritone guitar and a timpani hit.
-  const v = voice(0, { echo: 0.12, reverb: 0.35, life: 2.4 });
-  if (!v) return;
-  duckMusic(0.5, 0.9, 0.8);
-  brass(v, midiToFreq(46), 0, 0.1, 0.12, { bright: 4 });
-  brass(v, midiToFreq(58), 0, 0.1, 0.07, { bright: 4 });
-  for (const n of [45, 52, 57, 60]) {
-    brass(v, midiToFreq(n), 0.12, 0.85, n < 50 ? 0.12 : 0.08, { bright: 5, vib: 10 });
-  }
-  P(v, 45, 0.12, 0.45, 'twang');
-  P(v, 52, 0.13, 0.3, 'twang');
-  T(v, { at: 0.12, type: 'sine', freq: 87, freqEnd: 62, glide: 0.3, dur: 0.8, gain: 0.42, attack: 0.003 });
-  N(v, { at: 0.12, dur: 0.15, gain: 0.28, filter: { type: 'lowpass', freq: 250 } });
+  if (repeated('kill-sting', 1.2)) return;
+  const v = voice(0, { life: 1.4 }); if (!v) return;
+  duckMusic(0.7, 0.2, 0.5);
+  P(v, 45, 0, 0.25, 'nylon'); P(v, 52, 0.04, 0.16, 'nylon');
 }
 
-// ---- Round flow -----------------------------------------------------------
-
 export function playCountdownTick(urgency: number): void {
+  if (repeated('countdown', 0.35)) return;
   const u = clamp(Number.isFinite(urgency) ? urgency : 0, 0, 1);
-  const v = voice(0, { life: 0.25 });
-  if (!v) return;
-  N(v, { dur: 0.018, gain: 0.18 + 0.22 * u, filter: { type: 'bandpass', freq: 3000 + 2500 * u, q: 4 } });
-  const f = 1000 + 800 * u;
-  T(v, { type: 'sine', freq: f, freqEnd: f * 0.85, dur: 0.05, gain: 0.12 + 0.15 * u, attack: 0.001 });
-  if (u > 0.5) T(v, { type: 'sine', freq: 160, freqEnd: 120, dur: 0.08, gain: 0.15 * u, attack: 0.002 });
+  const v = voice(0, { life: 0.16 }); if (!v) return;
+  T(v, { type: 'sine', freq: 460 + 60 * u, dur: 0.065, gain: 0.075 + 0.025 * u, attack: 0.004 });
+  N(v, { dur: 0.016, gain: 0.035, attack: 0.003, filter: { type: 'bandpass', freq: 900, q: 0.6 } });
 }
 
 export function playRoundStart(): void {
-  // "Draw!": whip swish → crack, then a mission bell ding.
-  const v = voice(0, { echo: 0.22, reverb: 0.25, life: 1.6 });
-  if (!v) return;
-  N(v, { dur: 0.07, gain: 0.14, attack: 0.045, filter: { type: 'bandpass', freq: 1200, freqEnd: 7000, sweep: 0.05, q: 1.2 } });
-  N(v, { at: 0.05, dur: 0.03, gain: 0.5, attack: 0.0008, filter: { type: 'highpass', freq: 2000 } });
-  N(v, { at: 0.05, dur: 0.02, gain: 0.25, attack: 0.0008, filter: { type: 'bandpass', freq: 4500, q: 1 } });
-  const base = 880;
-  const bell: Array<[number, number, number]> = [
-    [0.5, 0.06, 1.6], [1, 0.14, 1.2], [1.183, 0.08, 0.9], [1.506, 0.05, 0.8],
-    [2, 0.07, 0.7], [2.514, 0.03, 0.5], [2.662, 0.02, 0.4], [3.011, 0.02, 0.35],
-  ];
-  for (const [ratio, gain, dur] of bell) {
-    T(v, { at: 0.07, type: 'sine', freq: base * ratio, dur, gain, attack: 0.002 });
-  }
+  if (repeated('round-start', 0.4)) return;
+  const v = voice(0, { life: 0.8 }); if (!v) return;
+  P(v, 57, 0, 0.2); P(v, 64, 0.07, 0.12);
 }
 
-/** Kept for existing call sites — now the "Draw!" cue. */
 export function playTickStart(): void {
   playRoundStart();
 }
 
 export function playReveal(): void {
-  // Whoosh / riser as the plans are revealed
-  const v = voice(0, { reverb: 0.2, life: 0.8 });
-  if (!v) return;
-  N(v, { dur: 0.45, gain: 0.32, attack: 0.16, filter: { type: 'bandpass', freq: 500, freqEnd: 4500, sweep: 0.22, q: 1.4 } });
-  N(v, { dur: 0.3, gain: 0.07, attack: 0.12, filter: { type: 'highpass', freq: 6000 } });
-  T(v, { type: 'sine', freq: 200, freqEnd: 900, glide: 0.2, dur: 0.3, gain: 0.07, attack: 0.15 });
+  if (repeated('reveal', 0.3)) return;
+  const v = voice(0, { life: 0.3 }); if (!v) return;
+  N(v, { brown: true, dur: 0.22, gain: 0.22, attack: 0.045, filter: { type: 'bandpass', freq: 750, q: 0.6 } });
 }
 
-/** Resolution start: reveal whoosh + low cinematic brass rumble. */
-export function playTickResolve(): void {
-  playReveal();
-  const v = voice(0, { reverb: 0.2, life: 0.9 });
-  if (!v) return;
-  T(v, { at: 0.05, type: 'sine', freq: 160, freqEnd: 55, glide: 0.55, dur: 0.7, gain: 0.45, attack: 0.003 });
-  T(v, { at: 0.05, type: 'sawtooth', freq: 220, freqEnd: 110, glide: 0.45, dur: 0.6, gain: 0.18, attack: 0.01, filter: { type: 'lowpass', freq: 900, q: 0.8 } });
-  T(v, { at: 0.05, type: 'triangle', freq: 330, freqEnd: 165, glide: 0.4, dur: 0.55, gain: 0.12, attack: 0.01, filter: { type: 'lowpass', freq: 1600 } });
-  N(v, { at: 0.05, dur: 0.5, gain: 0.15, attack: 0.02, filter: { type: 'bandpass', freq: 380, q: 0.5 } });
-}
-
-// ---- UI ---------------------------------------------------------------------
+export function playTickResolve(): void { playReveal(); }
 
 export function playEmotePop(): void {
   const v = voice(0, { life: 0.25 });
@@ -647,7 +554,7 @@ export function playEmotePop(): void {
 export function playUiTap(): void {
   const v = voice(0, { life: 0.15 });
   if (!v) return;
-  T(v, { type: 'triangle', freq: 1600, freqEnd: 1200, dur: 0.03, gain: 0.07, attack: 0.001 });
+  T(v, { type: 'triangle', freq: 600, freqEnd: 480, dur: 0.04, gain: 0.05, attack: 0.001 });
   N(v, { dur: 0.006, gain: 0.05, filter: { type: 'bandpass', freq: 4000, q: 1 } });
 }
 
@@ -669,47 +576,20 @@ export function playJoin(): void {
 // ---- Endings ----------------------------------------------------------------
 
 export function playVictory(): void {
-  // Trumpet fanfare: "ta-ta-ta-TAAA, ta-ta-ta-TAAAAA" in C major, with
-  // harmony, timpani, cymbal shimmer and a final guitar strum.
-  const v = voice(0, { echo: 0.12, reverb: 0.3, life: 3.4 });
-  if (!v) return;
-  duckMusic(0.3, 2.4, 1.2);
-  const m = midiToFreq;
-  const lead: Array<[number, number, number]> = [
-    [67, 0, 0.12], [67, 0.15, 0.12], [67, 0.3, 0.12], [72, 0.45, 0.48],
-    [67, 0.96, 0.13], [72, 1.11, 0.13], [76, 1.26, 0.13], [79, 1.41, 1.3],
-  ];
-  for (const [n, at, d] of lead) brass(v, m(n), at + 0.04, d, 0.13, { bright: 6, vib: d > 0.4 ? 14 : 0 });
-  for (const [n, at, d] of [[64, 0.45, 0.48], [76, 1.41, 1.3], [72, 1.41, 1.3]] as Array<[number, number, number]>) {
-    brass(v, m(n), at + 0.04, d, 0.08, { bright: 5, vib: 10 });
-  }
-  for (const [n, at, d] of [[48, 0.45, 0.5], [43, 0.96, 0.4], [48, 1.41, 1.3]] as Array<[number, number, number]>) {
-    brass(v, m(n), at + 0.04, d, 0.1, { bright: 3 });
-  }
-  T(v, { at: 0.49, type: 'sine', freq: 98, freqEnd: 92, dur: 0.5, gain: 0.38, attack: 0.002 });
-  T(v, { at: 1.45, type: 'sine', freq: 65, freqEnd: 62, dur: 1.2, gain: 0.45, attack: 0.002 });
-  N(v, { at: 1.45, dur: 0.12, gain: 0.22, filter: { type: 'lowpass', freq: 300 } });
-  N(v, { at: 1.45, dur: 1.6, gain: 0.1, attack: 0.005, filter: { type: 'highpass', freq: 5000 } });
-  [48, 52, 55, 60, 64].forEach((n, i) => P(v, n, 1.45 + i * 0.018, 0.32));
+  if (repeated('ending', 1)) return;
+  const v = voice(0, { life: 2.5 }); if (!v) return;
+  duckMusic(0.65, 1, 0.6);
+  [48, 55, 60, 64].forEach((note, i) => P(v, note, i * 0.12, 0.27));
+  P(v, 67, 0.65, 0.24);
 }
 
 export function playDefeat(): void {
-  // Sad muted trombone "wah-wah-wah-waaaah" with a lonely wind gust.
-  const v = voice(0, { reverb: 0.25, life: 3.4 });
-  if (!v) return;
-  duckMusic(0.3, 2.6, 1.2);
-  const m = midiToFreq;
-  const notes: Array<[number, number, number]> = [[55, 0, 0.42], [54, 0.5, 0.42], [53, 1.0, 0.42], [52, 1.5, 1.6]];
-  notes.forEach(([n, at, d], i) => {
-    const last = i === notes.length - 1;
-    brass(v, m(n), at + 0.05, d, 0.15, { wah: true, bright: 7, vib: last ? 30 : 0, wobble: last });
-    brass(v, m(n - 12), at + 0.05, d, 0.06, { wah: true, bright: 6 });
-  });
-  P(v, 40, 1.55, 0.4, 'bass');
-  N(v, { at: 0.3, brown: true, dur: 2.6, gain: 0.6, attack: 0.8, filter: { type: 'bandpass', freq: 400, freqEnd: 900, q: 1.2 } });
+  if (repeated('ending', 1)) return;
+  const v = voice(0, { life: 2.5 }); if (!v) return;
+  duckMusic(0.65, 1, 0.6);
+  [57, 53, 52].forEach((note, i) => P(v, note, i * 0.3, 0.24));
+  P(v, 45, 0.7, 0.3, 'bass');
 }
-
-// ---- Music --------------------------------------------------------------
 
 export function startAmbient(): void {
   if (music) return;
@@ -723,10 +603,10 @@ export function startAmbient(): void {
     music = startMusic({
       ctx: c,
       dest: graph.music,
-      reverb: graph.reverb,
+      reverb: null,
       white: graph.white,
       brown: graph.brown,
-      isMuted: () => muted,
+      isMuted: () => muted || !audioPreferences.musicEnabled || audioPreferences.musicVolume === 0,
       intensity: musicIntensity,
     });
   } catch {
@@ -740,7 +620,7 @@ export function stopAmbient(): void {
   music = null;
 }
 
-/** 0..1 — faster tempo, shaker/kick/brush, then a tremolo string pad at the top. */
+/** 0..1 — a small tempo lift and a quiet brush on the backbeat. */
 export function setMusicIntensity(level: number): void {
   musicIntensity = clamp(Number.isFinite(level) ? level : 0, 0, 1);
   music?.setIntensity(musicIntensity);

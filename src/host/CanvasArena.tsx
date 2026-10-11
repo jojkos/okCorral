@@ -147,7 +147,7 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
       const enemy: Team = team === 'sheriffs' ? 'outlaws' : 'sheriffs';
       const sf = shooter ? st.frames[shooter.id] : undefined;
       const dir = facingOf(team);
-      const fromX = (sf?.x ?? teamX(L, team)) + dir * 62 * L.s;
+      const fromX = (sf?.x ?? teamX(L, team)) + dir * 65 * L.s;
       const fromY = (sf?.feet ?? L.feet[b.fromSlot]) - gunHeight(L);
       const laneFeet = L.feet[b.toSlot];
       let toX = teamX(L, enemy), toY = laneFeet - 72 * L.s;
@@ -382,7 +382,7 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
       if (!sf) continue;
       const enemy: Team = b.fromTeam === 'sheriffs' ? 'outlaws' : 'sheriffs';
       const dir = facingOf(b.fromTeam);
-      const x1 = sf.x + dir * 62 * L.s, y1 = sf.feet - gunHeight(L);
+      const x1 = sf.x + dir * 65 * L.s, y1 = sf.feet - gunHeight(L);
       const x2 = teamX(L, enemy), y2 = L.feet[b.toSlot] - gunHeight(L);
       ctx.save();
       ctx.globalAlpha = 0.85 * fade;
