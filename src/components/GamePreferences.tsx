@@ -42,7 +42,7 @@ export default function GamePreferences() {
           <div className="audio-level"><input aria-label={`${title} volume`} type="range" min="0" max="100" step="5" value={Math.round(volume * 100)} disabled={!enabled} onChange={e => update({ [`${kind}Volume`]: Number(e.target.value) / 100 })} /><output>{Math.round(volume * 100)}%</output></div>
           {kind === 'music' && <div className="audio-track">
             <strong>{WESTERN_TRACK.title}</strong>
-            <span>Original western soundtrack · Runway</span>
+            <span>Western soundtrack · original tempo</span>
             {musicStatus === 'loading' && <span role="status">Loading soundtrack…</span>}
             {musicStatus === 'error' && <span role="alert">Music couldn't load. <button type="button" onClick={retryMusic}>Try again</button></span>}
           </div>}

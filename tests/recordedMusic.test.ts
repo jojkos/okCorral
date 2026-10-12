@@ -36,25 +36,27 @@ function fakeContext() {
       stop(...times: number[]) { this.stops.push(times); },
     };
   }
-  const ctx = { currentTime: 10, createGain: () => bus, createBuffer: buffer,
+  const ctx = { currentTime: 10, state: 'running', createGain: () => bus, createBuffer: buffer,
+    decodeAudioData: async () => wave(),
     createBufferSource() { const source = makeSource(); sources.push(source); return source; },
   } as unknown as AudioContext;
   return { ctx, bus, sources, dest: node() as unknown as AudioNode };
 }
 
 test('the selected soundtrack is a bundled, real MP3, not the old ambient score', () => {
-  assert.equal(WESTERN_TRACK.title, 'Last Hand at High Noon');
-  const asset = new URL(`../public${WESTERN_TRACK.url}`, import.meta.url);
+  assert.equal(WESTERN_TRACK.title, 'Dusty Silence');
+  const asset = new URL(WESTERN_TRACK.url);
+  assert.ok(asset.pathname.endsWith('/src/assets/music/dusty-silence.mp3'));
   assert.ok(statSync(asset).size > 1_000_000);
   const bytes = readFileSync(asset);
   assert.ok(bytes.subarray(0, 3).toString() === 'ID3' || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0));
 });
 
-test('normal round settings keep the recording at its natural speed', () => {
+test('all round settings keep Dusty Silence at its original tempo and pitch', () => {
   for (let seconds = 1; seconds <= 10; seconds += 0.5) assert.equal(recordedMusicRate(seconds), 1);
   for (const seconds of [0, -1, NaN, Infinity]) assert.equal(recordedMusicRate(seconds), 1);
   for (const seconds of [1.1, 2.42, 3.99, 9.81]) {
-    assert.ok(recordedMusicRate(seconds) >= 0.97 && recordedMusicRate(seconds) <= 1.03);
+    assert.equal(recordedMusicRate(seconds), 1);
   }
 });
 
@@ -95,7 +97,7 @@ test('many rounds share one continuously looping source without restart accents'
   assert.equal(sources[0].playbackRate.events.length, 0);
   assert.deepEqual(statuses, ['loading', 'playing']);
   handle.syncRound(3.9);
-  assert.equal(sources[0].playbackRate.events[0][0], 'target', 'custom tempo changes glide without seeking');
+  assert.equal(sources[0].playbackRate.events.length, 0, 'custom rounds never change the recording tempo');
   handle.stop(); handle.stop();
   assert.equal(sources[0].stops.length, 1);
   assert.ok(bus.gain.events.some(e => e[0] === 'hold'), 'fade holds the current gain instead of jumping');
@@ -113,6 +115,34 @@ test('leaving a game while downloading never starts late music', async () => {
   assert.equal(sources.length, 0);
   assert.equal(bus.disconnects, 1);
   assert.deepEqual(statuses, ['loading']);
+});
+
+test('rapid replay shares the Dusty Silence download and only starts the current game', async t => {
+  let complete!: (response: Response) => void;
+  const request = t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => { complete = resolve; }));
+  const { ctx, dest, sources } = fakeContext();
+  const previous = startRecordedMusic({ ctx, dest, durationSec: 4 });
+  previous.stop();
+  const current = startRecordedMusic({ ctx, dest, durationSec: 3.9 });
+  await Promise.resolve();
+  complete({ ok: true, arrayBuffer: async () => new ArrayBuffer(1) } as Response);
+  await Promise.all([previous.ready, current.ready]);
+  assert.equal(request.mock.callCount(), 1);
+  assert.equal(sources.length, 1);
+  assert.equal(sources[0].loop, true);
+  assert.equal(sources[0].starts.length, 1);
+  assert.equal(sources[0].playbackRate.value, 1);
+  current.stop(); current.stop();
+  assert.equal(sources[0].stops.length, 1);
+});
+
+test('a closed audio context never starts a late recording', async () => {
+  const { ctx, dest, sources } = fakeContext();
+  Object.defineProperty(ctx, 'state', { value: 'closed' });
+  const handle = startRecordedMusic({ ctx, dest, durationSec: 4, load: async () => wave() });
+  await handle.ready;
+  assert.equal(sources.length, 0);
+  handle.stop();
 });
 
 test('a failed or synchronously throwing loader reports an error, never a synth fallback', async () => {

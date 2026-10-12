@@ -1,8 +1,8 @@
 /*
- * Generated western recording plus procedural gameplay effects. Organized around:
+ * Dusty Silence recording plus procedural gameplay effects. Organized around:
  *   - playX() — one-shot SFX tied to game events (most take an optional
  *     stereo `pan`: -1 = left / sheriffs, +1 = right / outlaws)
- *   - startAmbient() / stopAmbient() — the locally bundled Runway recording
+ *   - startAmbient() / stopAmbient() — the locally bundled Dusty Silence recording
  *   - setMuted() / setVolume() — global controls
  *
  * Graph: effects + short echo/reverb → effects volume + warmth ─┐
@@ -717,7 +717,7 @@ export function retryMusic(): void {
   startAmbient();
 }
 
-/** Match the round's tempo without restarting or marking its first beat. */
+/** Retain the round API without restarting or changing the recording's tempo. */
 export function syncMusicRound(durationMs: number): void {
   musicRoundDuration = clamp(Number.isFinite(durationMs) ? durationMs / 1000 : 4, 1, 10);
   music?.syncRound(musicRoundDuration);

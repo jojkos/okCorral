@@ -1,7 +1,6 @@
 export const WESTERN_TRACK = {
-  title: 'Last Hand at High Noon',
-  url: '/audio/last-hand-at-high-noon-4805ad80.mp3',
-  bpm: 120,
+  title: 'Dusty Silence',
+  url: new URL('./assets/music/dusty-silence.mp3', import.meta.url).href,
 } as const;
 
 export type MusicPlaybackStatus = 'idle' | 'loading' | 'playing' | 'error';
@@ -11,13 +10,9 @@ export interface RecordedMusicHandle {
   ready: Promise<void>;
 }
 
-/** The requested 120-BPM groove fits normal half-second round settings.
- * For custom lengths, allow only a tiny tempo correction, never a fast remix. */
-export function recordedMusicRate(durationSec: number): number {
-  if (!Number.isFinite(durationSec) || durationSec <= 0) return 1;
-  const eighth = 60 / WESTERN_TRACK.bpm / 2;
-  const beats = Math.max(1, Math.round(durationSec / eighth));
-  return Math.max(0.97, Math.min(1.03, beats * eighth / durationSec));
+/** Preserve Dusty Silence's original tempo and pitch for every round setting. */
+export function recordedMusicRate(_durationSec: number): number {
+  return 1;
 }
 
 /** Build one continuous PCM loop. The native audio engine handles repetition,
@@ -94,7 +89,7 @@ export function startRecordedMusic(env: {
   const disconnect = () => { source?.disconnect(); bus.disconnect(); };
   env.onStatus?.('loading');
   const ready = Promise.resolve().then(() => (env.load ?? loadWesternMusic)(c)).then(buffer => {
-    if (stopped) return;
+    if (stopped || c.state === 'closed') return;
     source = c.createBufferSource(); source.buffer = buffer; source.loop = true;
     source.playbackRate.value = rate;
     source.connect(bus); source.onended = disconnect;
