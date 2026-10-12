@@ -45,6 +45,24 @@ test('rejoining keeps player identity, position and confirmed choice', () => {
     assert.equal(manager.submitAction('a', room, 'RELOAD', state.tick, state.tickStartTime!).action, 'COVER');
   } finally { manager.endSession(room); }
 });
+test('strong-wind warning survives broadcast, disconnect and reconnect', () => {
+  const { manager, room, states } = setup();
+  try {
+    const authoritative = manager.resumeHost(room, 'host').state!;
+    authoritative.strongWind = {
+      phase: 'warning', direction: 'down', activeRoundsRemaining: 0, cooldownRoundsRemaining: 0,
+    };
+    manager.broadcastState(room);
+    assert.deepEqual(states.at(-1)!.strongWind, authoritative.strongWind);
+
+    manager.handleDisconnect('a');
+    assert.equal(manager.joinRoom('a', room, 'Ada').success, true);
+    manager.broadcastState(room);
+    assert.deepEqual(states.at(-1)!.strongWind, {
+      phase: 'warning', direction: 'down', activeRoundsRemaining: 0, cooldownRoundsRemaining: 0,
+    });
+  } finally { manager.endSession(room); }
+});
 test('damage and ammo reveal on the shared timeline without changing the authoritative result', () => {
   const { manager, room, states } = setup();
   try {

@@ -21,6 +21,8 @@ export function presentState(state: GameState, now: number): GameState {
       return old ? { ...p, hp: old.hp, isAlive: old.isAlive, ammo: elapsed < VOLLEY.move ? old.ammo : p.ammo } : p;
     }),
     barrels: before.barrels,
+    walkingWoman: before.walkingWoman ?? state.walkingWoman,
+    pendingSuicides: before.pendingSuicides ?? state.pendingSuicides,
   };
 }
 export function newerState(previous: GameState | null, incoming: GameState) {

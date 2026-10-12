@@ -30,14 +30,14 @@ if (typeof Image !== 'undefined') {
   source.src = '/characters/gunslingers.webp';
 }
 const SCALE = 128 / 930;
-function piece(ctx: CanvasRenderingContext2D, region: Point[], joint?: Point, rotation = 0) {
+function piece(ctx: CanvasRenderingContext2D, region: Point[], joint?: Point, rotation = 0, scaleX = 1) {
   ctx.save();
-  if (joint) { ctx.translate(...joint); ctx.rotate(rotation); ctx.translate(-joint[0], -joint[1]); }
+  if (joint) { ctx.translate(...joint); ctx.rotate(rotation); ctx.scale(scaleX, 1); ctx.translate(-joint[0], -joint[1]); }
   ctx.beginPath(); path(ctx, region); ctx.clip(); ctx.drawImage(source!, 0, 0, 1536, 1024); ctx.restore();
 }
 export function drawSpriteCowboy(ctx: CanvasRenderingContext2D, team: Team, facing: 1 | -1, time: number, seed: number, pose: CowboyPose): boolean {
   if (!ready || !source) return false;
-  const r = rigs[team], walk = pose.walk || 0, recoil = pose.recoil || 0;
+  const r = rigs[team], walk = pose.walk || 0, recoil = pose.recoil || 0, suicide = pose.suicide || 0;
   ctx.save();
   ctx.scale(facing, 1);
   ctx.translate(-recoil * 4, Math.sin(time * 2 + seed) * .65 - Math.abs(walk) * 1.4);
@@ -50,7 +50,7 @@ export function drawSpriteCowboy(ctx: CanvasRenderingContext2D, team: Team, faci
   if (pose.hat === false) path(ctx, r.hat);
   ctx.clip('evenodd'); ctx.drawImage(source, 0, 0, 1536, 1024); ctx.restore();
   // A small shoulder turn gives recoil and reload their original event-driven motion.
-  piece(ctx, r.arm, r.armJoint, -recoil * .13 - (pose.reload || 0) * .65);
+  piece(ctx, r.arm, r.armJoint, -recoil * .13 - (pose.reload || 0) * .65 - suicide * 1.75, 1 - suicide * .48);
   ctx.restore();
   return true;
 }

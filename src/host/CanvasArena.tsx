@@ -5,8 +5,8 @@ import { VOLLEY } from '../lib/presentation';
 import { roundHeadline } from '../lib/recap';
 import { reducedMotion } from '../components/GamePreferences';
 import * as sound from '../sound';
-import { BADGE_MIN_Y, CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, barrelX, clamp01, facingOf, gunHeight, rand, slotLayout, teamX } from './arena/layout';
-import { drawBackground, drawBarrel, drawLanes, drawVignette } from './arena/scene';
+import { BADGE_MIN_Y, CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, barrelX, bulletLaneFeet, clamp01, facingOf, gunHeight, rand, slotLayout, teamX } from './arena/layout';
+import { drawBackground, drawBarrel, drawStrongWindWeather, drawVignette, drawWalkingWoman } from './arena/scene';
 import { ActorAnim, ActorFrame, actorFrame, drawActionBadge, drawActor, drawIntentMarker, drawPlate, headY } from './arena/actors';
 import { Banner, BulletAnim, EmoteFx, Floater, FlyingHat, Impact, Muzzle, ParticleSystem, drawBanners, drawBullets, drawEmotes, drawFloaters, drawHats, drawImpacts, drawMuzzles, stepHats } from './arena/fx';
 import { drawCountdown, drawHUD, drawLegend } from './arena/hud';
@@ -125,7 +125,10 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
     const before = new Map((gs.resolutionFrom?.players ?? []).map((p) => [p.id, p]));
     const players = gs.players.filter((p) => p.slot >= 0);
     const bullets = gs.lastTickBullets;
-    const deaths = new Set(bullets.filter((b) => b.lethal && b.targetId).map((b) => b.targetId!));
+    const deaths = new Set([
+      ...bullets.filter((b) => b.lethal && b.targetId).map((b) => b.targetId!),
+      ...gs.lastTickSuicides,
+    ]);
     const aliveAfter = (team: Team) => players.filter((p) => p.team === team && (before.get(p.id)?.isAlive ?? p.isAlive) && !deaths.has(p.id)).length;
     const final = deaths.size > 0 && (aliveAfter('sheriffs') === 0 || aliveAfter('outlaws') === 0);
     const winner: Team | 'draw' | null = !final ? null : aliveAfter('sheriffs') === 0 && aliveAfter('outlaws') === 0 ? 'draw' : aliveAfter('sheriffs') === 0 ? 'outlaws' : 'sheriffs';
@@ -149,7 +152,8 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
       const dir = facingOf(team);
       const fromX = (sf?.x ?? teamX(L, team)) + dir * 65 * L.s;
       const fromY = (sf?.feet ?? L.feet[b.fromSlot]) - gunHeight(L);
-      const laneFeet = L.feet[b.toSlot];
+      const laneFeet = bulletLaneFeet(L, b.toSlot);
+      const aimedY = bulletLaneFeet(L, b.aimedSlot) - gunHeight(L);
       let toX = teamX(L, enemy), toY = laneFeet - 72 * L.s;
       if (b.hit === 'player') {
         const tf = b.targetId ? st.frames[b.targetId] : undefined;
@@ -157,13 +161,29 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
       } else if (b.hit === 'barrel') {
         toX = barrelX(L, enemy) - dir * 22 * L.s; toY = laneFeet - barrelHeight(L) * 0.55;
       } else if (b.hit === 'bullet') {
-        toX = L.midX; toY = (fromY + (laneFeet - gunHeight(L))) / 2;
+        // Both server-side curves share this midpoint when they collide.
+        toX = L.midX;
+        toY = fromY * 0.5 + aimedY * 0.25 + (laneFeet - gunHeight(L)) * 0.25;
+        return {
+          fromX, fromY,
+          controlX: (fromX + toX) / 2,
+          controlY: fromY * 0.75 + aimedY * 0.25,
+          toX, toY,
+        };
+      } else if (b.hit === 'woman') {
+        const womanScale = Math.max(0.62, L.s * 0.92);
+        toX = L.midX; toY = laneFeet - 139 * womanScale;
       } else {
         const edge = dir > 0 ? CANVAS_W + 60 : -60;
         const k = (edge - fromX) / (toX - fromX);
         toY = fromY + (toY - fromY) * k; toX = edge;
       }
-      return { fromX, fromY, toX, toY };
+      return {
+        fromX, fromY,
+        controlX: (fromX + toX) / 2,
+        controlY: (fromY + aimedY) / 2,
+        toX, toY,
+      };
     };
 
     bullets.forEach((b, i) => {
@@ -193,13 +213,13 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
           if (motion) { st.shake.mag = b.hit === 'player' ? (b.lethal ? 16 : 10) : 6; st.shake.until = st.t + 0.28; }
           if (b.hit === 'player' && motion) { st.slowUntil = performance.now() + (b.lethal ? 160 : 80); st.slowScale = 0.06; }
         }
-        const label = b.hit === 'player' ? (b.lethal ? 'KILLED!' : '−1 ♥') : b.hit === 'barrel' ? 'BLOCKED' : b.hit === 'bullet' ? 'CLANG!' : 'MISS';
-        const color = b.hit === 'player' ? '#ff6a55' : b.hit === 'barrel' ? '#8fe3c4' : b.hit === 'bullet' ? '#ffd875' : '#c8bfb2';
+        const label = b.hit === 'player' ? (b.lethal ? 'KILLED!' : '−1 ♥') : b.hit === 'barrel' ? 'BLOCKED' : b.hit === 'bullet' ? 'CLANG!' : b.hit === 'woman' ? 'BYSTANDER HIT!' : 'MISS';
+        const color = b.hit === 'player' || b.hit === 'woman' ? '#ff6a55' : b.hit === 'barrel' ? '#8fe3c4' : b.hit === 'bullet' ? '#ffd875' : '#c8bfb2';
         const enemyX = teamX(L, b.fromTeam === 'sheriffs' ? 'outlaws' : 'sheriffs');
         // Labels pop on the street side of the target so they never cover its action badge.
         const toStreet = -facingOf(b.fromTeam);
         const fx = b.hit === 'miss' ? enemyX - facingOf(b.fromTeam) * 70 : b.hit === 'bullet' ? g.toX : g.toX + toStreet * 95 * L.s;
-        const fy = b.hit === 'miss' ? L.feet[b.toSlot] - 130 * L.s : b.hit === 'bullet' ? g.toY - 54 : g.toY - 8;
+        const fy = b.hit === 'miss' ? Math.max(210, Math.min(CANVAS_H - 80, bulletLaneFeet(L, b.toSlot) - 130 * L.s)) : b.hit === 'bullet' ? g.toY - 54 : g.toY - 8;
         st.floaters.push({ x: fx, y: fy, text: label, t: st.t, color, size: b.hit === 'player' ? 34 : 24, life: b.lethal ? 1.6 : 1.1 });
         if (motion) {
           const n = b.hit === 'barrel' ? 18 : b.hit === 'bullet' ? 22 : 14;
@@ -215,6 +235,42 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
         }
       });
     });
+
+    // A guilty shooter visibly raises the revolver to their temple, then the
+    // shot, head impact and fall all land on the shared impact beat.
+    for (const id of gs.lastTickSuicides) {
+      const victim = players.find((p) => p.id === id);
+      if (!victim) continue;
+      at(VOLLEY.impact, () => {
+        const f = st.frames[id];
+        if (!f) return;
+        const facing = facingOf(victim.team);
+        const x = f.x + facing * 8 * L.s;
+        const y = f.feet - 112 * L.s;
+        cue('playGunshot', pan(victim.team));
+        if (final) cue('playFinalShot'); else cue('playKillSting');
+        st.muzzles.push({ x, y, t: st.t, life: 0.12, dir: -facing });
+        st.impacts.push({ x: x - facing * 4 * L.s, y: y - 2 * L.s, t: st.t, kind: 'player', lethal: true });
+        st.shake.mag = Math.max(st.shake.mag, 15); st.shake.until = st.t + 0.3;
+        if (reducedMotion()) return;
+        st.slowUntil = performance.now() + 170; st.slowScale = 0.08;
+        for (let k = 0; k < 7; k++) {
+          st.particles.add({
+            kind: 'smoke', x, y, vx: -facing * (18 + Math.random() * 36), vy: -35 - Math.random() * 50,
+            drag: 1.25, size: 5 + Math.random() * 6, life: 1.1 + Math.random() * 0.5, age: 0, color: '#d8ccb4', fade: true,
+          });
+        }
+        for (let k = 0; k < 22; k++) {
+          const spread = (Math.random() - 0.5) * 220;
+          st.particles.add({
+            kind: k % 4 === 0 ? 'dot' : 'streak', x: x - facing * 5 * L.s, y: y - 2 * L.s,
+            vx: -facing * (100 + Math.random() * 280), vy: -70 - Math.random() * 190 + spread,
+            gravity: 430, drag: 0.75, size: 1.8 + Math.random() * 3.4,
+            life: 0.5 + Math.random() * 0.45, age: 0, color: k % 3 ? '#8d0a0d' : '#d42b23', fade: true,
+          });
+        }
+      });
+    }
 
     // Round headline + match-ending slow-motion.
     at(VOLLEY.impact + 180, () => {
@@ -336,7 +392,11 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
   ctx.translate(-st.cam.x, -st.cam.y);
 
   drawBackground(ctx, bg, st.t);
-  drawLanes(ctx, L, new Set());
+  drawStrongWindWeather(ctx, L, gs.strongWind, st.t, motion);
+  const roundProgress = gs.phase === 'planning' && gs.tickStartTime
+    ? clamp01((serverNow() - gs.tickStartTime) / gs.config.tickDuration)
+    : 1;
+  drawWalkingWoman(ctx, L, gs.walkingWoman, st.t, motion, roundProgress);
 
   // Compute every actor's frame first (positions are needed for bullets/emotes).
   for (const p of seated) {
@@ -359,10 +419,14 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
       const moving = elapsed >= VOLLEY.reveal && elapsed < VOLLEY.move && was && was.slot !== p.slot;
       const fired = p.currentAction.startsWith('SHOOT') && gs.lastTickBullets.some((b) => b.shooterId === p.id);
       const recoilT = (elapsed - VOLLEY.move) / 260;
+      const suicideT = gs.lastTickSuicides.includes(p.id)
+        ? clamp01((elapsed - VOLLEY.reveal) / (VOLLEY.impact - VOLLEY.reveal))
+        : 0;
       drawActor(ctx, L, p, f, anim, {
         walk: motion && moving ? Math.sin(a * 32) : 0,
         recoil: motion && fired && recoilT >= 0 && recoilT < 1 ? Math.sin(recoilT * Math.PI) : 0,
         reload: p.currentAction === 'RELOAD' && elapsed >= VOLLEY.reveal && elapsed < VOLLEY.impact ? Math.sin(clamp01((elapsed - VOLLEY.reveal) / (VOLLEY.impact - VOLLEY.reveal)) * Math.PI) : 0,
+        suicide: motion ? suicideT * suicideT * (3 - 2 * suicideT) : suicideT >= 0.5 ? 1 : 0,
       }, st.t, motion);
     }
     for (const team of ['sheriffs', 'outlaws'] as Team[]) {
@@ -383,12 +447,13 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
       const enemy: Team = b.fromTeam === 'sheriffs' ? 'outlaws' : 'sheriffs';
       const dir = facingOf(b.fromTeam);
       const x1 = sf.x + dir * 65 * L.s, y1 = sf.feet - gunHeight(L);
-      const x2 = teamX(L, enemy), y2 = L.feet[b.toSlot] - gunHeight(L);
+      const x2 = teamX(L, enemy), y2 = bulletLaneFeet(L, b.toSlot) - gunHeight(L);
+      const aimY = bulletLaneFeet(L, b.aimedSlot) - gunHeight(L);
       ctx.save();
       ctx.globalAlpha = 0.85 * fade;
       ctx.strokeStyle = TEAM_COL[b.fromTeam].main; ctx.lineWidth = 3; ctx.setLineDash([12, 10]);
       ctx.lineDashOffset = -st.t * 60;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo((x1 + x2) / 2, (y1 + aimY) / 2, x2, y2); ctx.stroke();
       ctx.setLineDash([]);
       // Crosshair on the targeted lane
       ctx.lineWidth = 3; ctx.strokeStyle = '#ff6a55';
@@ -410,7 +475,7 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
     drawPlate(ctx, L, p, laneY, p.actionLocked, gs.phase === 'planning', st.t, f.cover > 0.6 ? (f.covered ? 'safe' : 'exposed') : null);
   }
   for (const p of seated) {
-    if (!p.isAlive && !(elapsed >= 0 && before.get(p.id)?.isAlive)) continue;
+    if (!p.isAlive) continue;
     const f = st.frames[p.id];
     const hy = Math.max(BADGE_MIN_Y, headY(L, f));
     if (gs.phase === 'planning' && p.isAlive) {
@@ -421,6 +486,7 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
       if (p.currentAction.startsWith('MOVE') && was.slot === p.slot && elapsed > VOLLEY.reveal) override = { label: 'BLOCKED', color: '#ff9b7a' };
       if (p.currentAction === 'COVER' && f.noCover) override = { label: 'NO COVER', color: '#ff6a55' };
       if (p.currentAction.startsWith('SHOOT') && !gs.lastTickBullets.some((b) => b.shooterId === p.id)) override = { label: 'NO TARGET', color: '#c8bfb2' };
+      if (gs.lastTickSuicides.includes(p.id)) override = { label: 'GUILT', color: '#ff6a55' };
       ctx.save();
       ctx.globalAlpha = 1 - clamp01((elapsed - VOLLEY.settle) / 300);
       drawActionBadge(ctx, L, f.x, hy, p, elapsed / 1000, override);

@@ -14,8 +14,10 @@ interface ActionResult {
 interface PendingBullet {
   id: string;
   shooter: Player;
+  aimedSlot: number;
   targetSlot: number;
   trajectory: "straight" | "up" | "down";
+  offBoard: boolean;
 }
 
 let bulletIdCounter = 0;
@@ -26,6 +28,24 @@ export function resolveActions(state: GameState): ActionResult {
 
   // Deep clone the state to avoid mutations
   const newState: GameState = JSON.parse(JSON.stringify(state));
+  newState.lastTickSuicides = [];
+
+  // A player who hit the woman in the previous round loses this whole action:
+  // the suicide resolves before movement, cover, reloads, or the volley.
+  const suicidesDue = new Set(
+    newState.pendingSuicides
+      .filter((pending) => pending.dueTick <= newState.tick)
+      .map((pending) => pending.playerId),
+  );
+  newState.pendingSuicides = newState.pendingSuicides.filter(
+    (pending) => pending.dueTick > newState.tick,
+  );
+  for (const player of newState.players) {
+    if (!suicidesDue.has(player.id) || !player.isAlive) continue;
+    player.hp = 0;
+    player.isAlive = false;
+    newState.lastTickSuicides.push(player.id);
+  }
 
   // Group players by team for easier access
   const sheriffs = newState.players.filter(
@@ -123,52 +143,90 @@ export function resolveActions(state: GameState): ActionResult {
     if (!player.isAlive || player.slot < 0) return;
     if (player.ammo <= 0) return;
 
-    let targetSlot = -1;
+    let aimedSlot = -1;
     let trajectory: "straight" | "up" | "down" = "straight";
 
     if (player.currentAction === "SHOOT_STRAIGHT") {
-      targetSlot = player.slot;
+      aimedSlot = player.slot;
       trajectory = "straight";
     } else if (player.currentAction === "SHOOT_UP") {
-      targetSlot = player.slot - 1;
+      aimedSlot = player.slot - 1;
       trajectory = "up";
     } else if (player.currentAction === "SHOOT_DOWN") {
-      targetSlot = player.slot + 1;
+      aimedSlot = player.slot + 1;
       trajectory = "down";
     }
 
-    if (targetSlot >= 0 && targetSlot < newState.config.slotsPerSide) {
+    // Preserve the existing rule that an intrinsically off-board aim does not
+    // fire. Once a legal shot is fired, active wind shifts its actual target;
+    // a wind-blown shot still spends ammo even when that final target is out.
+    if (aimedSlot >= 0 && aimedSlot < newState.config.slotsPerSide) {
+      const windOffset = newState.strongWind.phase === "active"
+        ? (newState.strongWind.direction === "up" ? -1 : 1)
+        : 0;
+      const targetSlot = aimedSlot + windOffset;
       player.ammo--;
       pendingBullets.push({
         id: `bullet-${++bulletIdCounter}`,
         shooter: player,
+        aimedSlot,
         targetSlot,
         trajectory,
+        offBoard: targetSlot < 0 || targetSlot >= newState.config.slotsPerSide,
       });
     }
   });
 
+  // The bystander stands in the middle of the street and intercepts every
+  // simultaneous shot ending in her lane before bullets can reach each other
+  // or the opposing boardwalk.
+  const womanSlot = newState.walkingWoman.phase === "walking"
+    ? newState.walkingWoman.slot
+    : null;
+  const womanBullets = womanSlot === null
+    ? []
+    : pendingBullets.filter((b) => !b.offBoard && b.targetSlot === womanSlot);
+  const womanBulletIds = new Set(womanBullets.map((b) => b.id));
+  if (womanBullets.length) {
+    newState.walkingWoman.phase = "dead";
+    newState.walkingWoman.bloodTrail = womanSlot === null ? [] : [womanSlot];
+    newState.walkingWoman.killedFromTeam = womanBullets[0].shooter.team;
+    newState.walkingWoman.fromSlot = womanSlot;
+    for (const bullet of womanBullets) {
+      bullets.push({
+        id: bullet.id,
+        fromTeam: bullet.shooter.team,
+        fromSlot: bullet.shooter.slot,
+        aimedSlot: bullet.aimedSlot,
+        toSlot: bullet.targetSlot,
+        trajectory: bullet.trajectory,
+        hit: "woman",
+        shooterId: bullet.shooter.id,
+      });
+      if (!newState.pendingSuicides.some((p) => p.playerId === bullet.shooter.id)) {
+        newState.pendingSuicides.push({ playerId: bullet.shooter.id, dueTick: newState.tick + 1 });
+      }
+    }
+  }
+
   // Check for bullet collisions (bullets from opposite sides at same slot pair)
   const sheriffBullets = pendingBullets.filter(
-    (b) => b.shooter.team === "sheriffs",
+    (b) => b.shooter.team === "sheriffs" && !b.offBoard && !womanBulletIds.has(b.id),
   );
   const outlawBullets = pendingBullets.filter(
-    (b) => b.shooter.team === "outlaws",
+    (b) => b.shooter.team === "outlaws" && !b.offBoard && !womanBulletIds.has(b.id),
   );
 
   const collidedBullets = new Set<string>();
 
-  // Check each sheriff bullet against outlaw bullets for collision
+  // Opposing bullets move at the same speed, so they can physically meet at
+  // the street midpoint. Compare the midpoint of their curved paths: the
+  // first half follows the chosen aim, then wind bends the final half.
   sheriffBullets.forEach((sBullet) => {
     outlawBullets.forEach((oBullet) => {
-      // Bullets collide if they cross paths
-      // Sheriff shoots right, Outlaw shoots left
-      // They collide if their target lanes would intersect
-      // Simplified: if both shooting at each other's lanes
-      if (
-        sBullet.shooter.slot === oBullet.targetSlot &&
-        oBullet.shooter.slot === sBullet.targetSlot
-      ) {
+      const midpointLane = (b: PendingBullet) =>
+        b.shooter.slot * 0.5 + b.aimedSlot * 0.25 + b.targetSlot * 0.25;
+      if (Math.abs(midpointLane(sBullet) - midpointLane(oBullet)) < 0.001) {
         collidedBullets.add(sBullet.id);
         collidedBullets.add(oBullet.id);
 
@@ -176,6 +234,7 @@ export function resolveActions(state: GameState): ActionResult {
           id: sBullet.id,
           fromTeam: "sheriffs",
           fromSlot: sBullet.shooter.slot,
+          aimedSlot: sBullet.aimedSlot,
           toSlot: sBullet.targetSlot,
           trajectory: sBullet.trajectory,
           hit: "bullet",
@@ -185,6 +244,7 @@ export function resolveActions(state: GameState): ActionResult {
           id: oBullet.id,
           fromTeam: "outlaws",
           fromSlot: oBullet.shooter.slot,
+          aimedSlot: oBullet.aimedSlot,
           toSlot: oBullet.targetSlot,
           trajectory: oBullet.trajectory,
           hit: "bullet",
@@ -196,7 +256,7 @@ export function resolveActions(state: GameState): ActionResult {
 
   // Process remaining bullets
   pendingBullets.forEach((bullet) => {
-    if (collidedBullets.has(bullet.id)) return;
+    if (collidedBullets.has(bullet.id) || womanBulletIds.has(bullet.id)) return;
 
     const targetTeam: Team =
       bullet.shooter.team === "sheriffs" ? "outlaws" : "sheriffs";
@@ -210,6 +270,7 @@ export function resolveActions(state: GameState): ActionResult {
         id: bullet.id,
         fromTeam: bullet.shooter.team,
         fromSlot: bullet.shooter.slot,
+        aimedSlot: bullet.aimedSlot,
         toSlot: bullet.targetSlot,
         trajectory: bullet.trajectory,
         hit: "miss",
@@ -230,6 +291,7 @@ export function resolveActions(state: GameState): ActionResult {
         id: bullet.id,
         fromTeam: bullet.shooter.team,
         fromSlot: bullet.shooter.slot,
+        aimedSlot: bullet.aimedSlot,
         toSlot: bullet.targetSlot,
         trajectory: bullet.trajectory,
         hit: "barrel",
@@ -247,6 +309,7 @@ export function resolveActions(state: GameState): ActionResult {
         id: bullet.id,
         fromTeam: bullet.shooter.team,
         fromSlot: bullet.shooter.slot,
+        aimedSlot: bullet.aimedSlot,
         toSlot: bullet.targetSlot,
         trajectory: bullet.trajectory,
         hit: "player",

@@ -188,20 +188,20 @@
 
 /* Frontier: shared presentation across the big screen and phone. */
 :root { --cream: #f5ead6; --gold: #ebbf7b; --teal: #83c6c2; --rust: #ee987b; }
-body { background: #172630; color: var(--cream); background-image: none; }
+body { background: #25231d; color: var(--cream); background-image: none; }
 button, input { -webkit-tap-highlight-color: transparent; }
 button { touch-action: manipulation; }
 button:focus-visible, input:focus-visible { outline: 3px solid #a3d9d1; outline-offset: 4px; }
 button { transition: transform .16s ease, background .16s ease, border-color .16s ease; }
 button:not(:disabled):active { transform: translateY(2px); }
 .eyebrow { font: 700 10px 'Space Mono', monospace; letter-spacing: .2em; color: var(--gold); text-transform: uppercase; }
-.frontier-backdrop { background: linear-gradient(180deg, #142630bd, #122029f5), url('/frontier.svg') center / cover fixed !important; }
+.frontier-backdrop { background: linear-gradient(180deg, #30291fc9, #1f221df0), url('/frontier.svg') center / cover fixed !important; }
 .frontier-backdrop > svg { display: none; }
 .game-preferences { position: fixed; right: 16px; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 5px; z-index: 100; }
-.game-preferences button { display: grid; place-items: center; width: 44px; height: 44px; background: #14232ee8; border: 1px solid #71808166; border-radius: 50%; color: #ecddc5; }
+.game-preferences button { display: grid; place-items: center; width: 44px; height: 44px; background: #29271fe8; border: 1px solid #b2997166; border-radius: 50%; color: #ecddc5; }
 .game-preferences button[aria-pressed=true] { color: #92d0c3; border-color: #92d0c3; }
 .connection-banner { position: fixed; top: 0; left: 0; right: 0; padding: 9px; display: flex; justify-content: center; align-items: center; gap: 10px; background: #a44832; color: white; z-index: 110; font-size: 13px; }
-.landing-screen { position: relative; min-height: 100svh; overflow: hidden; background: linear-gradient(90deg,#101f2beb 0%,#1d2b3575 53%,#28353a20),url('/frontier.svg') center / cover; }
+.landing-screen { position: relative; min-height: 100svh; overflow: hidden; background: linear-gradient(90deg,#241f19eb 0%,#302a2075 53%,#43392620),url('/frontier.svg') center / cover; }
 .landing-top { display: flex; align-items: center; gap: 22px; padding: 28px 5vw; font: 10px 'Space Mono',monospace; letter-spacing: .15em; color: #deccbb; border-bottom: 1px solid #edcca029; }
 .landing-top > :last-child { margin-left: auto; }
 .brand-mark { font-size: 24px; font-weight: bold; color: var(--gold); }

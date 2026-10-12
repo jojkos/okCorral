@@ -352,6 +352,7 @@ export interface CowboyPose {
   walk?: number;
   recoil?: number;
   reload?: number;
+  suicide?: number;
   cover?: number;
   hat?: boolean;
 }
@@ -364,7 +365,8 @@ export function drawCowboy(c: Canvas, team: Team, facing: 1 | -1, time: number, 
   const skin = ['#d9a87c', '#bc865e', '#e5b78e'][Math.abs(seed) % 3],
     walk = pose.walk || 0,
     recoil = pose.recoil || 0,
-    reload = pose.reload || 0;
+    reload = pose.reload || 0,
+    suicide = pose.suicide || 0;
   const breath = Math.sin(time * 2 + seed) * 0.8;
   c.save();
   c.lineCap = 'round';
@@ -650,7 +652,7 @@ export function drawCowboy(c: Canvas, team: Team, facing: 1 | -1, time: number, 
   c.restore();
   c.save();
   c.translate(14, -5);
-  c.rotate(-recoil * 0.3 + reload * 0.95);
+  c.rotate(-recoil * 0.3 + reload * 0.95 - suicide * 2.05);
   curve(
     c,
     (p) => {

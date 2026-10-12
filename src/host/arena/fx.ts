@@ -53,8 +53,8 @@ export class ParticleSystem {
 }
 
 export interface Muzzle { x: number; y: number; t: number; life: number; dir: number }
-export interface BulletAnim { id: string; fromX: number; fromY: number; toX: number; toY: number; bornAt: number; dur: number; team: Team; hit: Bullet['hit'] }
-export interface Impact { x: number; y: number; t: number; kind: 'player' | 'barrel' | 'bullet'; lethal?: boolean }
+export interface BulletAnim { id: string; fromX: number; fromY: number; controlX: number; controlY: number; toX: number; toY: number; bornAt: number; dur: number; team: Team; hit: Bullet['hit'] }
+export interface Impact { x: number; y: number; t: number; kind: 'player' | 'barrel' | 'bullet' | 'woman'; lethal?: boolean }
 export interface Floater { x: number; y: number; text: string; t: number; color: string; size: number; life: number }
 export interface Banner { text: string; sub?: string; t: number; life: number; color: string; size: number; y: number }
 export interface FlyingHat { x: number; y: number; vx: number; vy: number; rot: number; vr: number; ground: number; team: Team; s: number; landed: boolean }
@@ -90,9 +90,12 @@ export function drawBullets(ctx: CanvasRenderingContext2D, list: BulletAnim[], t
     const k = (t - b.bornAt) / b.dur;
     if (k > 1) { list.splice(i, 1); continue; }
     if (k < 0) continue;
-    const x = b.fromX + (b.toX - b.fromX) * k;
-    const y = b.fromY + (b.toY - b.fromY) * k;
-    const angle = Math.atan2(b.toY - b.fromY, b.toX - b.fromX);
+    const inv = 1 - k;
+    const x = inv * inv * b.fromX + 2 * inv * k * b.controlX + k * k * b.toX;
+    const y = inv * inv * b.fromY + 2 * inv * k * b.controlY + k * k * b.toY;
+    const dx = 2 * inv * (b.controlX - b.fromX) + 2 * k * (b.toX - b.controlX);
+    const dy = 2 * inv * (b.controlY - b.fromY) + 2 * k * (b.toY - b.controlY);
+    const angle = Math.atan2(dy, dx);
     ctx.save();
     ctx.translate(x, y); ctx.rotate(angle);
     const trail = 140;

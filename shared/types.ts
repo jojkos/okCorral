@@ -73,9 +73,10 @@ export interface Bullet {
   id: string;
   fromTeam: Team;
   fromSlot: number;
+  aimedSlot: number;
   toSlot: number;
   trajectory: "straight" | "up" | "down";
-  hit: "player" | "barrel" | "bullet" | "miss";
+  hit: "player" | "barrel" | "bullet" | "woman" | "miss";
   shooterId?: string;
   targetId?: string; // player hit, or owner of the barrel that was hit
   lethal?: boolean; // this bullet took the target's last heart
@@ -87,15 +88,55 @@ export interface GameConfig {
   slotsPerSide: number; // default 5
 }
 
+export type WindDirection = "up" | "down";
+export type StrongWindPhase = "calm" | "warning" | "active";
+
+// Server-authoritative random-event state. A warning lasts for the current
+// round, then the same direction is used for both active rounds.
+export interface StrongWindState {
+  phase: StrongWindPhase;
+  direction: WindDirection | null;
+  activeRoundsRemaining: number;
+  cooldownRoundsRemaining: number;
+}
+
+export type WalkingWomanPhase = "inactive" | "walking" | "dead" | "gone";
+
+// The woman occupies one street lane per round. When hit, the event remains
+// visible through that round's resolution, then goes on cooldown.
+export interface WalkingWomanState {
+  phase: WalkingWomanPhase;
+  direction: WindDirection | null;
+  slot: number | null;
+  fromSlot: number | null;
+  cooldownRoundsRemaining: number;
+  bloodTrail: number[];
+  killedFromTeam: Team | null;
+}
+
+export interface PendingSuicide {
+  playerId: string;
+  dueTick: number;
+}
+
 // Full game state
 export interface GameState {
   roomCode: string;
   revision: number;
   resolutionStartedAt?: number;
-  resolutionFrom?: { players: Player[]; barrels: Barrel[] };
+  resolutionFrom?: {
+    players: Player[];
+    barrels: Barrel[];
+    walkingWoman?: WalkingWomanState;
+    pendingSuicides?: PendingSuicide[];
+  };
   phase: GamePhase;
   tick: number;
   config: GameConfig;
+  strongWind: StrongWindState;
+  walkingWoman: WalkingWomanState;
+  pendingSuicides: PendingSuicide[];
+  lastTickSuicides: string[];
   players: Player[];
   barrels: Barrel[];
   winner: Team | "draw" | null;

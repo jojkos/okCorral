@@ -434,9 +434,10 @@ export function playMiss(pan = 0): void {
 }
 
 // Convenience helper for per-bullet sound given the Bullet.hit type
-export function playBulletImpact(hit: 'player' | 'barrel' | 'bullet' | 'miss', pan = 0): void {
+export function playBulletImpact(hit: 'player' | 'barrel' | 'bullet' | 'woman' | 'miss', pan = 0): void {
   switch (hit) {
     case 'player': playFleshHit(pan); break;
+    case 'woman': playFleshHit(pan); break;
     case 'barrel': playWoodHit(pan); break;
     case 'bullet': playSpark(pan); break;
     case 'miss': playMiss(pan); break;

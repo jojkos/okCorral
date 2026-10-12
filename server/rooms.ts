@@ -14,6 +14,7 @@ import type {
 } from "../shared/types.js";
 import { resolveActions } from "./actions.js";
 import { chooseBotAction, BOT_NAMES } from "./bots.js";
+import { advanceStrongWind, advanceWalkingWoman, initialStrongWindState, initialWalkingWomanState } from "./randomEvents.js";
 
 interface Room {
   code: string;
@@ -98,6 +99,10 @@ function createInitialState(roomCode: string, config: GameConfig): GameState {
     phase: "lobby",
     tick: 0,
     config,
+    strongWind: initialStrongWindState(),
+    walkingWoman: initialWalkingWomanState(),
+    pendingSuicides: [],
+    lastTickSuicides: [],
     players: [],
     barrels,
     winner: null,
@@ -424,6 +429,10 @@ export class RoomManager {
     room.state.barrels.forEach((b) => (b.hp = 3));
 
     room.state.tick = 0;
+    room.state.strongWind = initialStrongWindState();
+    room.state.walkingWoman = initialWalkingWomanState();
+    room.state.pendingSuicides = [];
+    room.state.lastTickSuicides = [];
     room.state.winner = null;
     room.state.lastTickBullets = [];
 
@@ -442,6 +451,13 @@ export class RoomManager {
     room.state.resolutionStartedAt = undefined;
     room.state.phase = "planning";
     room.state.tick++;
+    room.state.strongWind = advanceStrongWind(room.state.strongWind, room.state.tick);
+    room.state.walkingWoman = advanceWalkingWoman(
+      room.state.walkingWoman,
+      room.state.tick,
+      room.state.config.slotsPerSide,
+      room.state.strongWind,
+    );
     room.state.pendingActions = [];
     room.state.tickStartTime = Date.now();
 
@@ -449,6 +465,10 @@ export class RoomManager {
     room.state.players.forEach((p) => {
       p.actionLocked = false;
       p.currentAction = "NONE";
+      if (p.isAlive && room.state.pendingSuicides.some((pending) => pending.playerId === p.id && pending.dueTick === room.state.tick)) {
+        p.actionLocked = true;
+        room.state.pendingActions.push({ playerId: p.id, action: "NONE" });
+      }
     });
 
     this.io.to(roomCode).emit("tickStart", {
@@ -471,7 +491,12 @@ export class RoomManager {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    room.state.resolutionFrom = { players: structuredClone(room.state.players), barrels: structuredClone(room.state.barrels) };
+    room.state.resolutionFrom = {
+      players: structuredClone(room.state.players),
+      barrels: structuredClone(room.state.barrels),
+      walkingWoman: structuredClone(room.state.walkingWoman),
+      pendingSuicides: structuredClone(room.state.pendingSuicides),
+    };
     room.state.resolutionStartedAt = Date.now();
     room.state.revision++;
     room.state.phase = "resolution";
@@ -546,6 +571,10 @@ export class RoomManager {
     room.state.resolutionStartedAt = undefined;
     room.state.phase = "lobby";
     room.state.tick = 0;
+    room.state.strongWind = initialStrongWindState();
+    room.state.walkingWoman = initialWalkingWomanState();
+    room.state.pendingSuicides = [];
+    room.state.lastTickSuicides = [];
     room.state.winner = null;
     room.state.pendingActions = [];
     room.state.lastTickBullets = [];

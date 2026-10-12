@@ -14,6 +14,7 @@ export function personalRecap(gs: GameState, me: Player): RecapLine[] {
       if (b.hit === 'player') out.push({ text: b.lethal ? `You gunned down ${nameOf(gs, b.targetId)}!` : `You hit ${nameOf(gs, b.targetId)}`, tone: 'good' });
       else if (b.hit === 'barrel') out.push({ text: `${nameOf(gs, b.targetId)}'s barrel took your bullet`, tone: 'neutral' });
       else if (b.hit === 'bullet') out.push({ text: 'Your bullet clashed mid-air', tone: 'neutral' });
+      else if (b.hit === 'woman') out.push({ text: 'You shot the woman. You will take your own life next round', tone: 'bad' });
       else out.push({ text: 'Your shot hit nothing but air', tone: 'bad' });
     }
     if (b.targetId === me.id) {
@@ -31,6 +32,8 @@ export function personalRecap(gs: GameState, me: Player): RecapLine[] {
 // Short headline for the whole round, used by host banners.
 export function roundHeadline(gs: GameState): string | null {
   const bullets = gs.lastTickBullets || [];
+  if (bullets.some(b => b.hit === 'woman')) return 'BYSTANDER SHOT!';
+  if (gs.lastTickSuicides.length) return gs.lastTickSuicides.length > 1 ? 'GUILT CLAIMS THEM' : 'GUILT TAKES ITS TOLL';
   const kills = bullets.filter(b => b.lethal);
   const sAlive = gs.players.filter(p => p.team === 'sheriffs' && p.isAlive && p.slot >= 0).length;
   const oAlive = gs.players.filter(p => p.team === 'outlaws' && p.isAlive && p.slot >= 0).length;

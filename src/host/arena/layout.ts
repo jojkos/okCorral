@@ -47,6 +47,12 @@ export const facingOf = (team: Team): 1 | -1 => (team === 'sheriffs' ? 1 : -1);
 export const gunHeight = (L: Layout) => 92 * L.s;
 /** Height of a barrel, in canvas px. */
 export const barrelHeight = (L: Layout) => 74 * L.s;
+/** Lane baseline for bullets, including wind-blown misses beyond either edge. */
+export const bulletLaneFeet = (L: Layout, slot: number) => {
+  if (slot < 0) return L.feet[0] - L.slotHeight;
+  if (slot >= L.n) return L.feet[L.n - 1] + L.slotHeight;
+  return L.feet[slot];
+};
 
 export function rand(seed: number) {
   let t = seed + 0x6d2b79f5;

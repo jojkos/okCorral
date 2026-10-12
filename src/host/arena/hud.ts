@@ -1,6 +1,7 @@
 import type { GameState, Team } from '../../../shared/types';
 import { COL, drawStar, roundRect } from '../../lib/cowboyDraw';
 import { CANVAS_W, CANVAS_H, FONT, TEAM_COL, easeOutBack, clamp01 } from './layout';
+import { drawWoodPanel } from './panels';
 
 export function drawHUD(ctx: CanvasRenderingContext2D, gs: GameState, timeLeft: number, t: number) {
   const g = ctx.createLinearGradient(0, 0, 0, 130);
@@ -15,8 +16,7 @@ export function drawHUD(ctx: CanvasRenderingContext2D, gs: GameState, timeLeft: 
   const living = gs.players.filter((p) => p.isAlive && p.slot >= 0);
   const ready = living.filter((p) => p.actionLocked).length;
   ctx.save();
-  ctx.fillStyle = 'rgba(16,9,5,0.94)'; ctx.strokeStyle = COL.gold; ctx.lineWidth = 2.5;
-  roundRect(ctx, cx - 300, 14, 600, 98, 12); ctx.fill(); ctx.stroke();
+  drawWoodPanel(ctx, cx - 300, 14, 600, 98, COL.gold);
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
   ctx.fillStyle = COL.bone; ctx.font = `30px ${FONT.title}`;
@@ -65,8 +65,7 @@ function drawTeamBar(ctx: CanvasRenderingContext2D, gs: GameState, team: Team, x
   const alive = roster.filter((p) => p.isAlive).length;
   const w = 420, h = 98;
   ctx.save();
-  ctx.fillStyle = 'rgba(16,9,5,0.94)'; ctx.strokeStyle = col.main; ctx.lineWidth = 2.5;
-  roundRect(ctx, x, y, w, h, 12); ctx.fill(); ctx.stroke();
+  drawWoodPanel(ctx, x, y, w, h, col.main);
   const right = team === 'outlaws';
   const ix = right ? x + w - 44 : x + 44;
   if (team === 'sheriffs') drawStar(ctx, ix, y + 36, 22, 10, COL.goldBright);
@@ -143,7 +142,7 @@ export function drawLegend(ctx: CanvasRenderingContext2D, gs: GameState) {
     { c: '#7ee08a', t: '✓ = action locked' },
     { c: '#8fe3c4', t: '⛨ crouched behind barrel = safe' },
     { c: '#ff8a75', t: '⚠ standing / barrel broken = exposed' },
-    { c: '#ffd875', t: '▮ barrel strength' },
+    { c: '#ffd875', t: '● barrel strength' },
   ];
   ctx.font = `bold 15px ${FONT.mono}`;
   const widths = items.map((i) => ctx.measureText(i.t).width + 36);

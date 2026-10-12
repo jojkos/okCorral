@@ -1,5 +1,6 @@
 import type { ActionType, Barrel, Player } from '../../../shared/types';
 import { COL, drawCowboy, roundRect } from '../../lib/cowboyDraw';
+import { drawWoodPanel } from './panels';
 import { FONT, Layout, TEAM_COL, barrelHeight, barrelX, clamp01, easeInOutQuad, easeOutBack, easeOutCubic, facingOf, nameSeed, teamX } from './layout';
 
 export interface ActorAnim {
@@ -37,7 +38,7 @@ export function actorFrame(L: Layout, p: Player, from: Player | undefined, barre
   return { x, feet, cover: anim.cover, covered: target === 1 && barrelUp, noCover: target === 1 && !barrelUp };
 }
 
-export interface ActorPose { walk: number; recoil: number; reload: number }
+export interface ActorPose { walk: number; recoil: number; reload: number; suicide: number }
 
 export function drawActor(ctx: CanvasRenderingContext2D, L: Layout, p: Player, f: ActorFrame, anim: ActorAnim, pose: ActorPose, t: number, motion: boolean) {
   const s = L.s;
@@ -97,42 +98,33 @@ function easeOutBounce(x: number) {
 
 /** Big readable info plate on the outer edge: name, hearts, bullets. */
 export function drawPlate(ctx: CanvasRenderingContext2D, L: Layout, p: Player, laneY: number, ready: boolean, planning: boolean, t: number, cover: 'safe' | 'exposed' | null = null) {
+  if (!p.isAlive) return;
   const s = Math.max(0.75, Math.min(1, L.slotHeight / 120));
   const cx = p.team === 'sheriffs' ? 132 : 1468;
   const w = 168 * s, h = Math.min(L.slotHeight - 14, 100 * s);
   const col = TEAM_COL[p.team];
   ctx.save();
   ctx.translate(cx, laneY);
-  ctx.globalAlpha = p.isAlive ? 1 : 0.5;
-  ctx.fillStyle = 'rgba(14,9,6,0.86)';
-  ctx.strokeStyle = ready && planning ? '#7ee08a' : col.main;
-  ctx.lineWidth = ready && planning ? 3 : 2;
-  roundRect(ctx, -w / 2, -h / 2, w, h, 10 * s); ctx.fill(); ctx.stroke();
+  drawWoodPanel(ctx, -w / 2, -h / 2, w, h, ready && planning ? '#7ee08a' : col.main);
   ctx.fillStyle = col.dark;
   ctx.fillRect(p.team === 'sheriffs' ? -w / 2 : w / 2 - 6, -h / 2 + 6, 6, h - 12);
 
   const name = (p.name || '').toUpperCase().slice(0, 11);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = `bold ${Math.round(19 * s)}px ${FONT.mono}`;
-  ctx.fillStyle = p.isAlive ? col.text : '#9a9a9a';
-  ctx.fillText(p.isAlive ? name : `† ${name}`, 0, -h / 2 + 17 * s);
+  ctx.fillStyle = col.text;
+  ctx.fillText(name, 0, -h / 2 + 17 * s);
   if (p.isBot) {
     ctx.font = `bold ${Math.round(10 * s)}px ${FONT.mono}`;
     ctx.fillStyle = 'rgba(234,211,176,0.55)';
     ctx.fillText('BOT', w / 2 - 20 * s, -h / 2 + 9 * s);
   }
 
-  if (p.isAlive) {
-    const row1 = -h / 2 + h * 0.52, row2 = -h / 2 + h * 0.8;
-    for (let i = 0; i < 3; i++) drawHeart(ctx, (i - 1) * 34 * s, row1, 13 * s, i < p.hp ? '#ff5a4f' : '#2e1414');
-    for (let i = 0; i < 3; i++) drawCartridge(ctx, (i - 1) * 34 * s, row2, 12 * s, i < p.ammo);
-  } else {
-    ctx.font = `bold ${Math.round(15 * s)}px ${FONT.mono}`;
-    ctx.fillStyle = '#b8a48a';
-    ctx.fillText(p.stats?.diedOnTick ? `DOWN · RND ${p.stats.diedOnTick}` : 'GUNNED DOWN', 0, h * 0.1);
-  }
+  const row1 = -h / 2 + h * 0.52, row2 = -h / 2 + h * 0.8;
+  for (let i = 0; i < 3; i++) drawHeart(ctx, (i - 1) * 34 * s, row1, 13 * s, i < p.hp ? '#ff5a4f' : '#2e1414');
+  for (let i = 0; i < 3; i++) drawCartridge(ctx, (i - 1) * 34 * s, row2, 12 * s, i < p.ammo);
 
-  if (p.isAlive && cover) {
+  if (cover) {
     const safe = cover === 'safe';
     ctx.save();
     ctx.translate(0, h / 2);
@@ -145,7 +137,7 @@ export function drawPlate(ctx: CanvasRenderingContext2D, L: Layout, p: Player, l
     ctx.fillText(safe ? '⛨ IN COVER' : '⚠ NO COVER', 0, 1);
     ctx.restore();
   }
-  if (planning && p.isAlive && ready) {
+  if (planning && ready) {
     ctx.fillStyle = '#7ee08a';
     const pulse = 1 + Math.sin(t * 5) * 0.04;
     ctx.save(); ctx.translate(p.team === 'sheriffs' ? w / 2 - 4 : -w / 2 + 4, -h / 2 + 2); ctx.scale(pulse, pulse);

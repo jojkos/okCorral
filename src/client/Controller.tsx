@@ -106,6 +106,7 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
   if (gameState && mine) for (const a of ['MOVE_UP', 'MOVE_DOWN'] as const) previews[a] = movePreview(gameState, mine, a);
   const threats = gameState && mine?.isAlive ? threatsTo(gameState, mine) : [];
   const threatIds = new Set(threats.map(t => t.id));
+  const suicideDue = gameState?.pendingSuicides.some(p => p.playerId === player.id && p.dueTick === gameState.tick) ?? false;
 
   // Mini-map highlight: what you're pointing at (planning) or what you locked.
   const focus = (planning && !chosen ? hover : null) ?? chosen;
@@ -126,7 +127,7 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
   const noteFor = (action: ActionType, shot: boolean): { text: string; tone: string; off: boolean } => {
     if (shot && ammo === 0) return { text: 'Reload to shoot', tone: 'muted', off: false };
     const pv = previews[action];
-    if (pv) return { text: pv.text, tone: pv.tone, off: pv.offBoard };
+    if (pv) return { text: pv.text, tone: pv.tone, off: !!pv.disabled };
     if (action === 'COVER') return coverOk ? { text: `Barrel ${barrel!.hp}/3 holds`, tone: 'ok', off: false } : { text: "Barrel destroyed — cover won't help", tone: 'danger', off: false };
     if (action === 'RELOAD') return { text: ammo === 3 ? 'Ammo full' : `+1 bullet · ${ammo}/3`, tone: 'muted', off: false };
     return { text: '', tone: 'muted', off: false };
@@ -159,9 +160,11 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
         ? <span className="mm-threat danger"><AlertTriangle size={13} /> {threats.length} gun{threats.length > 1 ? 's' : ''} can reach you{coverOk ? ' · duck or dodge' : ' · no barrel, move!'}</span>
         : <span className="mm-threat calm"><ShieldCheck size={13} /> No loaded guns can reach you</span>) : null} />}
 
+    {suicideDue && <div className="ctl-event-warning" role="alert"><AlertTriangle size={18} /><span><strong>You shot the woman.</strong> Guilt takes your life when this round resolves.</span></div>}
+
     <div className={`lock-strip ctl-lock ${confirmed ? 'confirmed' : ''} ${urgent ? 'urgent' : ''}`} role="status" aria-live="polite">
       {confirmed ? <Check size={18} /> : pending ? <LoaderCircle size={18} className="spin" /> : <Crosshair size={18} />}
-      <span>{!connected ? 'Reconnecting — hold tight' : !planning ? 'Watch the arena' : confirmed ? (confirmed === 'NONE' ? 'Action locked in' : `${labels[confirmed]} · locked in`) : pending ? `${labels[pending]} · sending…` : 'One action. Tap to lock it in.'}</span>
+      <span>{!connected ? 'Reconnecting — hold tight' : !planning ? 'Watch the arena' : suicideDue ? 'Fate is sealed · no action this round' : confirmed ? (confirmed === 'NONE' ? 'Action locked in' : `${labels[confirmed]} · locked in`) : pending ? `${labels[pending]} · sending…` : 'One action. Tap to lock it in.'}</span>
     </div>
 
     <div className={`ctl-grid ${team}`}>{tiles.map(({ action, icon: Icon, key, area, ...rest }) => {

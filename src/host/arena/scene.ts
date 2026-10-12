@@ -1,101 +1,163 @@
-import type { Barrel, Team } from '../../../shared/types';
+import type { Barrel, StrongWindState, Team, WalkingWomanState } from '../../../shared/types';
+import { drawDeadWoman, drawWomanBloodTrail } from './womanRemains';
+import { drawAliveWoman } from './womanWalking';
 import { COL, roundRect } from '../../lib/cowboyDraw';
-import { CANVAS_H, CANVAS_W, FONT, Layout, TEAM_COL, barrelHeight, rand } from './layout';
+import { CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, bulletLaneFeet, rand } from './layout';
 
 export function drawBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, t: number) {
   const pad = 60;
   if (img && img.complete && img.naturalWidth) {
     ctx.drawImage(img, -pad, -pad, CANVAS_W + pad * 2, CANVAS_H + pad * 2);
   } else {
-    const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
-    g.addColorStop(0, '#152e3b'); g.addColorStop(0.55, '#66565b'); g.addColorStop(1, '#2a2524');
-    ctx.fillStyle = g; ctx.fillRect(-pad, -pad, CANVAS_W + pad * 2, CANVAS_H + pad * 2);
+    const earth = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    earth.addColorStop(0, '#bda17a'); earth.addColorStop(1, '#927047');
+    ctx.fillStyle = earth; ctx.fillRect(-pad, -pad, CANVAS_W + pad * 2, CANVAS_H + pad * 2);
+    ctx.fillStyle = '#66553f';
+    ctx.fillRect(-pad, -pad, 530, CANVAS_H + pad * 2);
+    ctx.fillRect(1135, -pad, 525, CANVAS_H + pad * 2);
   }
-  // Heat shimmer over the horizon + darken the play area so actors pop.
-  const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
-  g.addColorStop(0, 'rgba(10,22,30,0.25)');
-  g.addColorStop(0.35, 'rgba(14,24,30,0.38)');
-  g.addColorStop(1, 'rgba(8,14,18,0.72)');
-  ctx.fillStyle = g; ctx.fillRect(-pad, -pad, CANVAS_W + pad * 2, CANVAS_H + pad * 2);
-  // Slow drifting clouds for life.
+  // Warm late-afternoon light. Keep the dirt bright enough for silhouettes,
+  // blood and bullet trails to share a readable ground plane.
+  const shade = ctx.createLinearGradient(0, 110, 0, CANVAS_H);
+  shade.addColorStop(0, 'rgba(43,36,29,0.08)');
+  shade.addColorStop(0.55, 'rgba(43,36,29,0.02)');
+  shade.addColorStop(1, 'rgba(34,30,25,0.13)');
+  ctx.fillStyle = shade; ctx.fillRect(-pad, -pad, CANVAS_W + pad * 2, CANVAS_H + pad * 2);
   ctx.save();
-  ctx.globalAlpha = 0.08;
-  ctx.fillStyle = '#f6d7ae';
-  for (let i = 0; i < 4; i++) {
-    const x = ((rand(i * 13) * CANVAS_W + t * (6 + i * 3)) % (CANVAS_W + 400)) - 200;
-    const y = 70 + i * 28;
-    ctx.beginPath(); ctx.ellipse(x, y, 160 + i * 30, 12 + i * 3, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.rect(480, 130, 640, CANVAS_H); ctx.clip();
+  for (let i = 0; i < 3; i++) {
+    const x = 520 + ((t * (7 + i * 2) + i * 219) % 750);
+    const y = 290 + i * 220;
+    const haze = ctx.createRadialGradient(x, y, 5, x, y, 100);
+    haze.addColorStop(0, 'rgba(245,222,174,0.07)'); haze.addColorStop(1, 'rgba(245,222,174,0)');
+    ctx.save(); ctx.translate(0, y); ctx.scale(1, 0.2); ctx.translate(0, -y);
+    ctx.fillStyle = haze; ctx.fillRect(x - 100, y - 100, 200, 200); ctx.restore();
   }
   ctx.restore();
 }
 
-/** Boardwalk under each team column + dusty main street between them. */
-export function drawLanes(ctx: CanvasRenderingContext2D, L: Layout, threatened: Set<string>) {
-  ctx.save();
-  // Street dust band
-  const street = ctx.createLinearGradient(0, L.top, 0, L.top + L.slotHeight * L.n);
-  street.addColorStop(0, 'rgba(160,112,72,0.10)');
-  street.addColorStop(1, 'rgba(120,80,50,0.22)');
-  ctx.fillStyle = street;
-  ctx.fillRect(470, L.top, 660, L.slotHeight * L.n);
+/** Dust and tumbleweeds live in the arena layer, behind the gunfighters. */
+export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, wind: StrongWindState, t: number, motion: boolean) {
+  if (wind.phase === 'calm' || !wind.direction) return;
+  const active = wind.phase === 'active';
+  const dir = wind.direction === 'up' ? -1 : 1;
+  const speed = motion ? (active ? 150 : 24) : 0;
+  const span = L.slotHeight * L.n + 180;
+  const wrap = (v: number) => ((v % span) + span) % span;
 
-  for (let i = 0; i < L.n; i++) {
-    const y0 = L.top + L.slotHeight * i;
-    const h = L.slotHeight;
-    for (const team of ['sheriffs', 'outlaws'] as Team[]) {
-      const x0 = team === 'sheriffs' ? 40 : 1130;
-      const w = 430;
-      // Planks
-      const g = ctx.createLinearGradient(0, y0, 0, y0 + h);
-      g.addColorStop(0, i % 2 ? 'rgba(74,50,34,0.55)' : 'rgba(84,58,38,0.60)');
-      g.addColorStop(1, 'rgba(40,26,18,0.72)');
-      ctx.fillStyle = g;
-      roundRect(ctx, x0, y0 + 3, w, h - 6, 10); ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 1;
-      for (let k = 1; k < 4; k++) {
-        const py = y0 + 3 + ((h - 6) * k) / 4;
-        ctx.beginPath(); ctx.moveTo(x0 + 8, py); ctx.lineTo(x0 + w - 8, py); ctx.stroke();
-      }
-      // Quiet wood details at the plank ends; keep the player lane uncluttered.
-      for (let k = 0; k < 4; k++) {
-        const py = y0 + 3 + (h - 6) * (k + 0.5) / 4;
-        ctx.strokeStyle = 'rgba(223,170,106,0.10)';
-        ctx.beginPath();
-        ctx.moveTo(x0 + 14, py + 3); ctx.lineTo(x0 + 65 + rand(i * 17 + k) * 38, py + 2);
-        ctx.moveTo(x0 + w - 85, py - 4); ctx.lineTo(x0 + w - 14, py - 3);
-        ctx.stroke();
-        for (const nx of [x0 + 11, x0 + w - 11]) {
-          ctx.fillStyle = 'rgba(8,12,14,0.46)';
-          ctx.beginPath(); ctx.arc(nx, py, 2, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = 'rgba(241,191,130,0.16)';
-          ctx.fillRect(nx - 1, py - 1, 2, 1);
-        }
-      }
-      // Sunlit street lip and a soft contact shadow below its raised edge.
-      const edgeX = team === 'sheriffs' ? x0 + w : x0;
-      const contact = ctx.createLinearGradient(edgeX - 10, 0, edgeX + 10, 0);
-      contact.addColorStop(team === 'sheriffs' ? 0 : 1, 'rgba(12,13,13,0.30)');
-      contact.addColorStop(team === 'sheriffs' ? 1 : 0, 'rgba(12,13,13,0)');
-      ctx.fillStyle = contact;
-      ctx.fillRect(edgeX - 10, y0 + 8, 20, h - 16);
-      ctx.fillStyle = 'rgba(221,166,101,0.27)';
-      ctx.fillRect(team === 'sheriffs' ? edgeX - 6 : edgeX + 3, y0 + 8, 3, h - 16);
-      // Team-tinted edge facing the street
-      ctx.fillStyle = TEAM_COL[team].glow + '0.35)';
-      ctx.fillRect(team === 'sheriffs' ? x0 + w - 4 : x0, y0 + 6, 4, h - 12);
-      if (threatened.has(`${team}-${i}`)) {
-        ctx.fillStyle = 'rgba(255,90,60,0.10)';
-        roundRect(ctx, x0, y0 + 3, w, h - 6, 10); ctx.fill();
-      }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(472, L.top - 10, 656, L.slotHeight * L.n + 20);
+  ctx.clip();
+
+  // Dry, hand-drawn dust streaks make the strong phase visibly harsher.
+  if (active) {
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 13; i++) {
+      const x = 500 + rand(i * 41 + 8) * 600;
+      const base = rand(i * 53 + 17) * span;
+      const y = L.top - 90 + wrap(base + t * speed * dir);
+      const len = 50 + rand(i * 19) * 110;
+      ctx.globalAlpha = 0.13 + rand(i * 7) * 0.18;
+      ctx.strokeStyle = i % 3 ? '#d9ad72' : '#f0d19a';
+      ctx.lineWidth = 2 + rand(i * 29) * 4;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + 12, y + dir * len * 0.45, x - 8, y + dir * len);
+      ctx.stroke();
     }
-    // Lane number in the street, faint, for callouts ("lane 3").
-    ctx.fillStyle = 'rgba(240,215,175,0.16)';
-    ctx.font = `bold ${Math.round(Math.min(44, h * 0.42))}px ${FONT.title}`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(i + 1), L.midX, L.ys[i]);
-    ctx.strokeStyle = 'rgba(239,206,159,0.12)'; ctx.lineWidth = 2; ctx.setLineDash([6, 14]);
-    ctx.beginPath(); ctx.moveTo(500, L.ys[i]); ctx.lineTo(L.midX - 40, L.ys[i]); ctx.moveTo(L.midX + 40, L.ys[i]); ctx.lineTo(1100, L.ys[i]); ctx.stroke();
-    ctx.setLineDash([]);
+  }
+
+  // The warning already reveals direction, but rolls much more gently.
+  for (let i = 0; i < (active ? 5 : 3); i++) {
+    const x = 560 + rand(i * 67 + 4) * 480;
+    const base = rand(i * 37 + 3) * span;
+    const y = L.top - 90 + wrap(base + t * speed * dir);
+    const r = (active ? 24 : 19) + rand(i * 23) * 10;
+    drawTumbleweed(ctx, x, y, r, motion ? t * dir * (active ? 4.5 : 1.1) + i : i, active ? 0.88 : 0.5, i + 1);
+  }
+  ctx.restore();
+}
+
+/** A clearly neutral civilian walking down the middle of the firing lanes. */
+export function drawWalkingWoman(ctx: CanvasRenderingContext2D, L: Layout, woman: WalkingWomanState, t: number, motion: boolean, roundProgress: number) {
+  const s = Math.max(0.62, L.s * 0.92);
+  const headSide = woman.killedFromTeam === 'outlaws' ? -1 : 1;
+  const targetFeet = woman.slot === null ? null : bulletLaneFeet(L, woman.slot);
+  const fromFeet = woman.fromSlot === null ? targetFeet : bulletLaneFeet(L, woman.fromSlot);
+  const feet = targetFeet === null || fromFeet === null
+    ? null
+    : fromFeet + (targetFeet - fromFeet) * roundProgress;
+  drawWomanBloodTrail(ctx, L, woman, s, headSide, roundProgress);
+  if (woman.phase === 'inactive' || woman.phase === 'gone' || woman.slot === null || feet === null) return;
+  const stride = motion && woman.phase === 'walking' ? Math.sin(t * 5.5) : 0;
+
+  if (woman.phase === 'dead') {
+    drawDeadWoman(ctx, L.midX, feet, s, headSide);
+    return;
+  }
+
+  ctx.save();
+  ctx.translate(L.midX, feet);
+  ctx.fillStyle = 'rgba(5,10,12,0.42)';
+  ctx.beginPath(); ctx.ellipse(0, 1 * s, 35 * s, 9 * s, 0, 0, Math.PI * 2); ctx.fill();
+  drawAliveWoman(ctx, s, stride);
+  ctx.restore();
+}
+
+
+function drawTumbleweed(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, rotation: number, alpha: number, seed: number) {
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(rotation); ctx.scale(1.08, 0.86); ctx.globalAlpha = alpha;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  // Several broken, lopsided loops form a thorny ball. Deliberately avoid a
+  // clean outer rim, radial spokes or a centre hub — those read as a wheel.
+  for (let strand = 0; strand < 4; strand++) {
+    const points = 11;
+    ctx.strokeStyle = strand % 2 ? '#8b5a31' : '#b27a42';
+    ctx.lineWidth = 1.6 + strand * 0.35;
+    ctx.beginPath();
+    for (let i = 0; i <= points; i++) {
+      const a = (Math.PI * 2 * i) / points + strand * 0.47;
+      const wobble = 0.68 + rand(seed * 101 + strand * 29 + (i % points) * 13) * 0.34;
+      const dent = 1 + Math.sin(a * 3 + seed + strand) * 0.11 + Math.cos(a * 5 - strand) * 0.07;
+      const px = Math.cos(a) * r * wobble * dent + (strand - 1.5) * 1.5;
+      const py = Math.sin(a) * r * wobble / dent;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+
+  // Loose branches criss-cross at unrelated angles instead of meeting in the
+  // middle. A few ends poke outside the tangled silhouette.
+  for (let i = 0; i < 10; i++) {
+    const a = rand(seed * 211 + i * 31) * Math.PI * 2;
+    const b = a + 1.2 + rand(seed * 307 + i * 17) * 2.6;
+    const c = a - 0.7 + rand(seed * 419 + i * 23) * 1.4;
+    const startR = r * (0.35 + rand(seed * 503 + i * 7) * 0.48);
+    const endR = r * (0.45 + rand(seed * 601 + i * 11) * 0.65);
+    ctx.strokeStyle = i % 3 ? '#9b6838' : '#c08a4b';
+    ctx.lineWidth = 1.4 + rand(seed * 701 + i * 19) * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * startR, Math.sin(a) * startR);
+    ctx.bezierCurveTo(
+      Math.cos(c) * r * 0.18, Math.sin(c) * r * 0.18,
+      Math.cos(b - 0.5) * r * 0.58, Math.sin(b - 0.5) * r * 0.58,
+      Math.cos(b) * endR, Math.sin(b) * endR,
+    );
+    ctx.stroke();
+  }
+
+  // Sparse curled tips sell dry brush rather than a geometric symbol.
+  ctx.strokeStyle = '#c49355'; ctx.lineWidth = 1.5;
+  for (let i = 0; i < 5; i++) {
+    const a = rand(seed * 809 + i * 43) * Math.PI * 2;
+    const sx = Math.cos(a) * r * 0.72, sy = Math.sin(a) * r * 0.72;
+    ctx.beginPath(); ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo(Math.cos(a + 0.45) * r * 1.12, Math.sin(a + 0.45) * r * 1.12, Math.cos(a + 0.15) * r * 1.02, Math.sin(a + 0.15) * r * 1.02);
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -158,9 +220,9 @@ export function drawBarrel(ctx: CanvasRenderingContext2D, L: Layout, x: number, 
     ctx.restore();
   }
 
-  const body = hp === 3 ? COL.wood : hp === 2 ? '#5a371e' : '#45291a';
+  const body = hp === 3 ? '#927042' : hp === 2 ? '#795932' : '#604426';
   const g = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
-  g.addColorStop(0, COL.woodDark); g.addColorStop(0.45, body); g.addColorStop(0.6, COL.woodLight); g.addColorStop(1, COL.woodDark);
+  g.addColorStop(0, '#493a29'); g.addColorStop(0.36, body); g.addColorStop(0.57, '#ae8a51'); g.addColorStop(1, '#55412d');
   ctx.fillStyle = g;
   // Bulging barrel silhouette
   ctx.beginPath();
@@ -175,16 +237,25 @@ export function drawBarrel(ctx: CanvasRenderingContext2D, L: Layout, x: number, 
   for (let i = -2; i <= 2; i++) {
     ctx.beginPath(); ctx.moveTo(i * w * 0.16, -2); ctx.quadraticCurveTo(i * w * 0.2, -h / 2, i * w * 0.16, -h + 2); ctx.stroke();
   }
-  // Hoops
-  ctx.fillStyle = '#2a2420';
-  for (const f of [0.2, 0.78]) { ctx.fillRect(-w * 0.55, -h * f - 3 * s, w * 1.1, 6 * s); }
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  for (const f of [0.2, 0.78]) { ctx.fillRect(-w * 0.55, -h * f - 3 * s, w * 1.1, 1.5); }
+  // Iron bands curve around the staves, catching light along the top rim.
+  for (const f of [0.2, 0.78]) {
+    const bandY = -h * f;
+    ctx.fillStyle = '#343732'; ctx.strokeStyle = '#232821'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-w * 0.49, bandY - 4 * s);
+    ctx.quadraticCurveTo(0, bandY + 2 * s, w * 0.49, bandY - 4 * s);
+    ctx.lineTo(w * 0.49, bandY + 3 * s);
+    ctx.quadraticCurveTo(0, bandY + 9 * s, -w * 0.49, bandY + 3 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#7b7d66'; ctx.lineWidth = 1.2 * s;
+    ctx.beginPath(); ctx.moveTo(-w * 0.46, bandY - 3 * s); ctx.quadraticCurveTo(0, bandY + 2 * s, w * 0.46, bandY - 3 * s); ctx.stroke();
+  }
   // Lid
-  ctx.fillStyle = COL.woodLight;
+  ctx.fillStyle = '#bb9960';
   ctx.beginPath(); ctx.ellipse(0, -h, w * 0.42, 7 * s, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = COL.woodDark;
+  ctx.fillStyle = '#806038';
   ctx.beginPath(); ctx.ellipse(0, -h, w * 0.34, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#51422f'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(-w * 0.29, -h - 2 * s); ctx.lineTo(w * 0.29, -h - 2 * s);
+  ctx.moveTo(-w * 0.29, -h + 2 * s); ctx.lineTo(w * 0.29, -h + 2 * s); ctx.stroke();
 
   // Damage: bullet holes and cracks that read from across the room.
   if (hp < 3) {
@@ -203,15 +274,13 @@ export function drawBarrel(ctx: CanvasRenderingContext2D, L: Layout, x: number, 
     ctx.beginPath(); ctx.moveTo(w * 0.1, -h - 4 * s); ctx.lineTo(w * 0.42, -h - 2 * s); ctx.lineTo(w * 0.38, -h + 12 * s); ctx.closePath(); ctx.fill();
   }
 
-  // HP notches on the barrel's belly — readable even with someone crouched behind.
-  const pw = 13 * s, ph = 10 * s;
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  roundRect(ctx, -pw * 2.4, -h * 0.5 - ph * 0.9, pw * 4.8, ph * 1.8, 4); ctx.fill();
+  // Three brass pins in the lower hoop communicate the remaining strength.
   for (let i = 0; i < 3; i++) {
-    const px = (i - 1) * pw * 1.5;
-    ctx.fillStyle = i < hp ? COL.goldBright : 'rgba(40,30,24,0.9)';
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 1.5;
-    roundRect(ctx, px - pw / 2, -h * 0.5 - ph / 2, pw, ph, 2); ctx.fill(); ctx.stroke();
+    const px = (i - 1) * 15 * s, py = -h * 0.2 + 2 * s;
+    ctx.fillStyle = i < hp ? '#e7c579' : '#242721';
+    ctx.strokeStyle = '#292a22'; ctx.lineWidth = 1.3 * s;
+    ctx.beginPath(); ctx.arc(px, py, 4.2 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (i < hp) { ctx.fillStyle = '#ffe1a2'; ctx.fillRect(px - 1.5 * s, py - 2 * s, 2 * s, 1.2 * s); }
   }
   ctx.restore();
 }
@@ -219,7 +288,7 @@ export function drawBarrel(ctx: CanvasRenderingContext2D, L: Layout, x: number, 
 export function drawVignette(ctx: CanvasRenderingContext2D, danger: number) {
   const g = ctx.createRadialGradient(CANVAS_W / 2, CANVAS_H / 2, CANVAS_H * 0.32, CANVAS_W / 2, CANVAS_H / 2, CANVAS_H * 0.9);
   g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(1, danger > 0 ? `rgba(120,10,10,${0.25 + danger * 0.35})` : 'rgba(6,14,20,0.45)');
+  g.addColorStop(1, danger > 0 ? `rgba(120,10,10,${0.25 + danger * 0.35})` : 'rgba(36,28,18,0.24)');
   ctx.fillStyle = g;
   ctx.fillRect(-60, -60, CANVAS_W + 120, CANVAS_H + 120);
 }

@@ -1,23 +1,127 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<svg xmlns="http://www.w3.org/2000/svg" width="1720" height="1020" viewBox="-60 -60 1720 1020">
 <defs>
- <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#152e3b"/><stop offset=".46" stop-color="#66565b"/><stop offset=".76" stop-color="#d59469"/><stop offset="1" stop-color="#e8bc82"/></linearGradient>
- <linearGradient id="sand" x2="0" y2="1"><stop stop-color="#8a6654"/><stop offset="1" stop-color="#252e33"/></linearGradient>
- <radialGradient id="glow"><stop stop-color="#ffcb88" stop-opacity=".32"/><stop offset="1" stop-color="#edbf7a" stop-opacity="0"/></radialGradient>
- <pattern id="grain" width="107" height="79" patternUnits="userSpaceOnUse"><path d="M3 19h8m39 28h4m32-40h6m-12 59h11M20 66h2" stroke="#f2d3a0" stroke-opacity=".07"/></pattern>
+<linearGradient id="earth" x2=".2" y2="1"><stop stop-color="#bda17a"/><stop offset=".45" stop-color="#b3946a"/><stop offset="1" stop-color="#927047"/></linearGradient>
+<linearGradient id="walk" x2="1" y2="0"><stop stop-color="#493c30"/><stop offset=".45" stop-color="#796247"/><stop offset="1" stop-color="#967b55"/></linearGradient>
+<linearGradient id="wall" x2="1" y2="0"><stop stop-color="#584937"/><stop offset=".75" stop-color="#887151"/><stop offset="1" stop-color="#aa8d61"/></linearGradient>
+<linearGradient id="glass" x2=".6" y2="1"><stop stop-color="#7a8982"/><stop offset=".4" stop-color="#3e5858"/><stop offset="1" stop-color="#263b3e"/></linearGradient>
+<linearGradient id="roof" x2="0" y2="1"><stop stop-color="#a48257"/><stop offset=".55" stop-color="#775c40"/><stop offset="1" stop-color="#4f4131"/></linearGradient>
+<radialGradient id="sunlight"><stop stop-color="#f2d7a0" stop-opacity=".22"/><stop offset="1" stop-color="#f2d7a0" stop-opacity="0"/></radialGradient>
+<pattern id="dust" width="127" height="103" patternUnits="userSpaceOnUse">
+<path d="M7 22h9m36 38h14m37-45h4M18 85h5m80 9h13M79 41h3" stroke="#ead1a0" stroke-opacity=".25" stroke-linecap="round"/>
+<path d="M23 42l4-1m70 32h8M62 11h3m-5 78h4" stroke="#6d553a" stroke-opacity=".22" stroke-linecap="round"/>
+<ellipse cx="45" cy="29" rx="1.4" ry=".7" fill="#745c40" opacity=".35"/><ellipse cx="115" cy="65" rx="2.5" ry="1" fill="#806243" opacity=".22"/></pattern>
+<pattern id="planks" width="213" height="32" patternUnits="userSpaceOnUse">
+<path d="M0 0h213v32H0z" fill="url(#walk)"/><path d="M0 1h213M0 31h213" stroke="#352e26" stroke-width="2"/><path d="M0 3h213" stroke="#bea176" stroke-opacity=".38"/>
+<path d="M7 10q36-4 65-1m13 1 59-1m-122 11q46 4 75 0m32 3h61" fill="none" stroke="#c4a37a" stroke-opacity=".16"/>
+<path d="M4 7v3m0 14v3m200-20v3m0 14v3" stroke="#302a25" stroke-width="2"/><ellipse cx="155" cy="16" rx="7" ry="2" fill="none" stroke="#453c30" stroke-opacity=".45"/></pattern>
+<pattern id="siding" width="240" height="24" patternUnits="userSpaceOnUse">
+<path d="M0 0h240v24H0z" fill="url(#wall)"/><path d="M0 23h240" stroke="#302d29" stroke-opacity=".48" stroke-width="2"/><path d="M0 2h240" stroke="#d0b081" stroke-opacity=".22"/><path d="M15 13h70m57 2h50" stroke="#372d26" stroke-opacity=".12"/></pattern>
+<g id="window">
+<path d="M-4 -4h65v91H-4z" fill="#322e28"/><path d="M0 0h57v81H0z" fill="url(#glass)" stroke="#c5ab79" stroke-width="4"/><path d="M5 5h46v16L5 49Z" fill="#acb5a0" opacity=".17"/><path d="M28 2v78M1 38h54" stroke="#b69a6d" stroke-width="4"/><path d="M-8 82h73v7H-8z" fill="#aa8d60"/><path d="M-8 89h73v4H-8z" fill="#312c26"/></g>
+<g id="door">
+<path d="M-5 -5h70v140H-5z" fill="#332c27"/><path d="M0 0h60v129H0z" fill="#61543f" stroke="#af9366" stroke-width="3"/><path d="M8 8h44v52H8z" fill="url(#glass)" stroke="#a88f66" stroke-width="3"/><path d="M8 71h44v47H8z" fill="#514b3a" stroke="#917c56" stroke-width="2"/><path d="M31 8v51" stroke="#a28c65" stroke-width="2"/><circle cx="49" cy="66" r="3" fill="#d9b76e"/><path d="M-8 131h77v8H-8z" fill="#a88a5e"/></g>
+<g id="lantern">
+<path d="M0 -22v9m-9-9h18" stroke="#282e2b" stroke-width="3"/><path d="M-9 -10l4-6H5l4 6v22H-9z" fill="#c9984d" stroke="#302f29" stroke-width="2"/><path d="M-5 -6h10V8H-5z" fill="#e8c276"/><path d="M-10 12h20M0 -7v17" stroke="#4a4130" stroke-width="2"/></g>
+<g id="facade">
+<path d="M-60 0H250V226H-60z" fill="#292e2b"/><path d="M-60 8H239V222H-60z" fill="url(#siding)"/><path d="M224 10h15v211h-15z" fill="#b49b70"/><path d="M220 10h4v211h-4z" fill="#40392d"/>
+<use href="#window" x="12" y="77"/><use href="#door" x="109" y="70"/><path d="M-60 201h302v15H-60z" fill="#403a2f"/><path d="M-60 201h302v4H-60z" fill="#a88b63"/>
+<path d="M-60 13H252L277 45H-60z" fill="url(#roof)" stroke="#40382c" stroke-width="3"/><path d="M-60 21H256M-60 32H266" stroke="#cfaf7d" stroke-opacity=".25" stroke-width="2"/>
+<path d="M-60 45H277v8H-60z" fill="#3d382e"/><path d="M-60 45H276v3H-60z" fill="#c3a16d"/><path d="M-60 53H277l56 30H-60z" fill="#282d2a" opacity=".18"/><use href="#lantern" x="207" y="101"/></g>
+<g id="post">
+<path d="M0 0l65 34v15L0 15Z" fill="#34392e" opacity=".19"/><path d="M-5 -70H5V3H-5z" fill="#534836" stroke="#302e27" stroke-width="1.5"/><path d="M-5 -70h3V2h-3z" fill="#b69a69"/><path d="M-8 -74H8v9H-8zM-8 -3H8v9H-8z" fill="#6e5b3e" stroke="#3c352b" stroke-width="1"/></g>
+<g id="crate"><path d="M0 0l40-8 16 10-41 10Z" fill="#a08053" stroke="#504330" stroke-width="2"/><path d="M0 0l15 12v32L0 32Z" fill="#705b3d" stroke="#4b4030" stroke-width="2"/><path d="M15 12l41-10v33L15 44Z" fill="#896c43" stroke="#4b4030" stroke-width="2"/><path d="M19 16l32 16m0-25L19 39M20 23l29-7" stroke="#bb9860" stroke-width="3"/></g>
+<g id="weed" stroke="#766346" stroke-width="1.5" fill="none"><path d="M0 0l-4-11M0 0l5-15M1-2l10-6M-1-1l-10-6M1 0l10-2"/></g>
 </defs>
-<path fill="url(#sky)" d="M0 0h1600v900H0z"/>
-<ellipse cx="1050" cy="330" rx="490" ry="360" fill="url(#glow)"/>
-<circle cx="1080" cy="255" r="90" fill="#f2c28b" opacity=".8"/>
-<path d="M0 413l140-93 105 4 71-88 66 8 63 89 70 13 87 113 120-45 80 9 92-111 58-13 104 88 119-31 91 65 139-62v356H0Z" fill="#7d6260"/>
-<path d="M0 470l123-15 96-83 128 38 81 93 151-45 154 54 199-60 121 50 120-95 66 15 173 81 188-67v464H0Z" fill="#554d4e"/>
-<path d="M0 560Q430 488 800 555t800-30v375H0Z" fill="url(#sand)"/>
-<!-- Silhouettes frame an open, readable main street. -->
-<g fill="#202e34" stroke="#d6a477" stroke-opacity=".12" stroke-width="3">
-<path d="M0 150h164v36h45v371H0Z"/><path d="M0 173h186v37H0Z" fill="#17262e"/><path d="M26 239h114v96H26z" fill="#bc8557"/><path d="M32 245h102v83H32Z" fill="#3c4140"/><path d="M83 245v84m-50-42h100"/><path d="M10 347h170v32H10z"/><path d="M0 408h219v19H0z"/><path d="M28 428v132m143-132v132" stroke-width="9"/>
-<path d="M1462 229h138v359h-170V267h32Z"/><path d="M1412 247h188v24h-188z" fill="#17262e"/><path d="M1466 296h103v100h-103z" fill="#956a4e"/><path d="M1474 304h87v84h-87z" fill="#3c4140"/><path d="M1517 304v84m-43-42h87"/><path d="M1415 426h185v21h-185z"/><path d="M1445 447v159m113-159v147" stroke-width="9"/>
+<!-- Elevated stage view: combat takes place on the street, not against a sky. -->
+<path d="M-60-60H1660V960H-60z" fill="url(#earth)"/><path d="M-60-60H1660V126H-60z" fill="#5e6a60"/>
+<path d="M410 8h113v47h33v77H410zM1083 12h154v120h-154z" fill="#888575"/><path d="M468 20h46v35h-46zM1130 27h62v31h-62z" fill="#b7aa8b"/>
+<path d="M560 122l76-70h316l88 70Z" fill="#a89573"/><path d="M680 66h46v44h-46zM889 63h29v45h-29z" fill="#827b65"/>
+<path d="M729 123h149l62 837H635Z" fill="#d0b78e" opacity=".35"/><ellipse cx="918" cy="362" rx="418" ry="695" fill="url(#sunlight)"/>
+<!-- Wagon ruts taper gently into the far end of town. -->
+<g fill="none" stroke-linecap="round">
+<path d="M685 135C657 340 647 492 612 962M889 136C910 349 935 631 982 966" stroke="#725d40" stroke-opacity=".12" stroke-width="23"/>
+<path d="M685 135C657 340 647 492 612 962M889 136C910 349 935 631 982 966" stroke="#856b45" stroke-opacity=".25" stroke-width="3"/>
+<path d="M698 138C670 346 660 490 625 960M902 139C923 350 948 631 995 966" stroke="#e6cea0" stroke-opacity=".34" stroke-width="2"/>
+<path d="M622 324l-7 139m-8 48-11 112m371-244 10 91m14 130 19 125" stroke="#7b6646" stroke-opacity=".15" stroke-width="2"/></g>
+<path d="M468 149Q780 133 1125 151L1145 965H449Z" fill="url(#dust)"/>
+<g fill="#836944" opacity=".13"><path d="M531 266q40-15 98 0l-13 14-98-3zM974 460q45-12 121-3l-25 16-101-2zM700 679q72-13 133 5l-56 11-79-6zM497 822q58-11 76 8l-29 14-59-7z"/></g>
+<!-- Raised, continuous boardwalks along both sides of Main Street. -->
+<path d="M229 125H478V960H229zM1122 125H1371V960H1122z" fill="#3c352b"/>
+<path d="M244 128H465V960H244zM1135 128H1356V960H1135z" fill="url(#planks)"/>
+<path d="M456 127h11v833h-11zM1133 127h11v833h-11z" fill="#b6996b"/>
+<path d="M467 128h8v832h-8zM1125 128h8v832h-8z" fill="#504532"/>
+<path d="M475 129h16v831h-16zM1109 129h16v831h-16z" fill="#403c2e" opacity=".16"/>
+<path d="M245 125h39v835h-39zM1316 125h39v835h-39z" fill="#272e2a" opacity=".18"/>
+<!-- Four independent lots. Their size and spacing do not follow player lanes. -->
+<!-- Sheriff's modest office, set back at the far end of the left boardwalk. -->
+<g transform="translate(-7 153) scale(.88 .88)">
+<use href="#facade"/>
+<path d="M-12 5h226v33H-12z" fill="#343c32" stroke="#b9aa7f" stroke-width="2"/>
+<text x="103" y="29" fill="#e0cca0" font-family="Georgia,serif" font-size="21" font-weight="bold" letter-spacing="3" text-anchor="middle">SHERIFF</text>
+<path d="M21 83v72m12-72v72m12-72v72m12-72v72" stroke="#343c36" stroke-width="4"/>
+<path d="M180 167l4 8 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1z" fill="#c2a568"/>
 </g>
-<g fill="#f3b576" opacity=".75"><path d="M181 383h12v19h-12zM1419 400h12v20h-12z"/></g>
-<g stroke="#393d3c" stroke-width="9" fill="none"><path d="M45 641v163m0-90H8v-40m37 6h31v-45M1555 648v174m0-106h33v-45m-33 76h-27v-27"/></g>
-<g fill="#d8ac7b" opacity=".17"><path d="M186 589l96 6-114 5zM1100 647l210-5-161 11zM406 806l140 3-162 4z"/></g>
-<path fill="url(#grain)" d="M0 0h1600v900H0z"/>
+<!-- An empty hitching yard leaves a broad gap between the two left buildings. -->
+<path d="M-60 380H216l43 51-45 130H-60z" fill="#a38b65" opacity=".54"/>
+<path d="M-60 400H214M-60 521H182" stroke="#6c6249" stroke-opacity=".28" stroke-width="4"/>
+<g fill="#675841" stroke="#4d4434" stroke-width="2">
+<path d="M-30 420h248v9H-30zM-30 452h248v8H-30z"/>
+<path d="M12 405h9v76h-9zM96 407h9v74h-9zM201 405h9v76h-9z"/>
+</g>
+<path d="M-23 481h237l38 20H-23z" fill="#504d38" opacity=".12"/>
+<use href="#crate" x="186" y="534"/><use href="#weed" x="88" y="487"/><use href="#weed" x="221" y="589"/>
+<!-- Larger bordello in dusty rose with curtains and a little balcony. -->
+<g transform="translate(-3 608) scale(1.01 1.24)">
+<use href="#facade"/>
+<path d="M-60 54H219v141H-60z" fill="#7d4e50" opacity=".36"/>
+<use href="#window" x="12" y="77"/><use href="#door" x="109" y="70"/>
+<path d="M15 81h23l-8 38-15 26zM43 81h23v64l-15-25z" fill="#884e50"/>
+<path d="M119 81h17l-8 29-9 12zM143 81h13v40l-8-11z" fill="#8d5153"/>
+<path d="M-12 6h226v34H-12z" fill="#553b3d" stroke="#c2a67a" stroke-width="2"/>
+<text x="103" y="30" fill="#ead3b2" font-family="Georgia,serif" font-size="20" font-weight="bold" letter-spacing="3" text-anchor="middle">BORDELLO</text>
+<path d="M-20 56h204v7H-20zM-20 90h204v6H-20z" fill="#ac9680" stroke="#5b4740" stroke-width="1.5"/>
+<path d="M-9 63v28m20-28v28m20-28v28m20-28v28m20-28v28m20-28v28m20-28v28m20-28v28m20-28v28m20-28v28" stroke="#9b8371" stroke-width="3"/>
+</g>
+<!-- Open ground and a water trough on the right, opposite the sheriff. -->
+<path d="M1387 132H1660v154h-295z" fill="#b69c75"/>
+<path d="M1440 217h132l-12 31h-108z" fill="#675c47" stroke="#463f32" stroke-width="3"/>
+<path d="M1443 218h125l-9 10h-108z" fill="#59685b"/>
+<path d="M1457 247v12m94-12v12" stroke="#504831" stroke-width="6"/>
+<use href="#weed" x="1401" y="273"/><use href="#weed" x="1579" y="257"/>
+<!-- Saloon spans a larger frontage on the right, offset from both left shops. -->
+<g transform="translate(1600 316) scale(-1 1.24)">
+<use href="#facade"/>
+<path d="M-60 52H219v146H-60z" fill="#586c59" opacity=".23"/>
+<use href="#window" x="12" y="77"/><use href="#door" x="109" y="70"/>
+<path d="M109 117h27v46h-27zM142 117h27v46h-27z" fill="#a28352" stroke="#534837" stroke-width="2"/>
+<path d="M113 127h19m-19 9h19m-19 9h19m14-18h19m-19 9h19m-19 9h19" stroke="#cfad74" stroke-width="1"/>
+</g>
+<path d="M1386 323h226v37h-226z" fill="#343d31" stroke="#bea470" stroke-width="2"/>
+<text x="1499" y="350" fill="#e6d0a4" font-family="Georgia,serif" font-size="24" font-weight="bold" letter-spacing="4" text-anchor="middle">SALOON</text>
+<path d="M1352 371h308v28h-327z" fill="#b5a581" stroke="#4e4936" stroke-width="2"/>
+<g fill="#53685d" opacity=".62"><path d="M1354 372h28l-10 26h-28zM1408 372h27l-9 26h-27zM1462 372h27l-9 26h-27zM1516 372h27l-9 26h-27zM1570 372h27l-9 26h-27z"/></g>
+<path d="M1333 399h327v7h-327z" fill="#c4b38c"/><path d="M1333 406h327l-45 27h-335z" fill="#30372c" opacity=".15"/>
+<!-- A side alley separates the saloon from a squat stone-front bank. -->
+<path d="M1377 614h283v111h-283z" fill="#a78d66"/>
+<path d="M1391 654h248m-231 17h206" stroke="#dfc79a" stroke-opacity=".2" stroke-width="3"/>
+<g transform="translate(1600 739) scale(-.96 .89)">
+<use href="#facade"/>
+<path d="M-60 53H239v147H-60z" fill="#9e9982"/>
+<path d="M-60 70H239M-60 103H239M-60 136H239M-60 169H239M15 53v17m0 33v33m0 33v31m56-130v33m0 33v33m65-116v17m0 33v33m0 33v31m63-130v33m0 33v33" stroke="#706e5b" stroke-width="2"/>
+<use href="#window" x="12" y="77"/><use href="#door" x="109" y="70"/>
+<path d="M0 58h8v141H0zM74 58h8v141h-8zM180 58h12v141h-12zM215 58h15v141h-15z" fill="#c2b89b"/>
+</g>
+<path d="M1397 745h215v34h-215z" fill="#4d5043" stroke="#c7b68d" stroke-width="2"/>
+<text x="1504" y="770" fill="#eee1bc" font-family="Georgia,serif" font-size="23" font-weight="bold" letter-spacing="5" text-anchor="middle">BANK</text>
+<!-- Porch furniture and posts belong to buildings, not to the combat grid. -->
+<use href="#post" x="328" y="235"/><use href="#post" x="352" y="735"/><use href="#post" x="352" y="868"/>
+<use href="#post" x="1248" y="433"/><use href="#post" x="1248" y="573"/>
+<g fill="#424636" opacity=".12"><path d="M476 348l155 47-97 7-58-17zM476 893l159 42-116 10-43-23zM1124 606l-132 24 62 12 70-13z"/></g>
+<use href="#crate" x="1302" y="657"/>
+<path d="M253 571h79v12h-79zM258 583v20m66-20v20" fill="#6e583d" stroke="#3b3428" stroke-width="4"/>
+<g transform="translate(1484 682)" fill="none" stroke="#443a2e" stroke-width="6"><circle r="30"/><circle r="23" stroke="#aa8957" stroke-width="3"/><path d="M-27 0h54M0-27v54M-19-19l38 38M-19 19l38-38" stroke-width="2"/><circle r="5" fill="#514330"/></g>
+<g transform="translate(28 325) rotate(-5)"><path d="M0 0h25v33H0z" fill="#c9b384"/><path d="M4 5h17m-14 4h12m-14 15h16m-16 4h15" stroke="#786143" stroke-width="2"/><circle cx="13" cy="17" r="4" fill="#8f7854"/></g>
+<use href="#weed" x="487" y="387"/><use href="#weed" x="1111" y="604"/><use href="#weed" x="486" y="725"/><use href="#weed" x="1110" y="273"/>
+<g fill="#7d6849" opacity=".62"><path d="M509 329l6-3 6 4-8 2zM1074 559l9-4 8 5-12 2zM523 738l5-2 5 3-8 2zM1009 850l7-4 9 5-12 2z"/></g>
+<g fill="#604f38" opacity=".14" transform="rotate(-10 799 509)"><ellipse cx="806" cy="345" rx="3" ry="6"/><ellipse cx="818" cy="368" rx="3" ry="6"/><ellipse cx="804" cy="394" rx="3" ry="6"/><ellipse cx="816" cy="416" rx="3" ry="6"/><ellipse cx="802" cy="443" rx="3" ry="6"/></g>
 </svg>
