@@ -200,6 +200,7 @@ button:not(:disabled):active { transform: translateY(2px); }
 .game-preferences { position: fixed; right: 16px; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 5px; z-index: 100; }
 .game-preferences button { display: grid; place-items: center; width: 44px; height: 44px; background: #29271fe8; border: 1px solid #b2997166; border-radius: 50%; color: #ecddc5; }
 .game-preferences button[aria-pressed=true] { color: #92d0c3; border-color: #92d0c3; }
+.game-preferences .motion-toggle[aria-pressed=true] { display: flex; width: auto; gap: 7px; padding: 0 14px; border-radius: 24px; font: 12px 'Space Mono', monospace; }
 .connection-banner { position: fixed; top: 0; left: 0; right: 0; padding: 9px; display: flex; justify-content: center; align-items: center; gap: 10px; background: #a44832; color: white; z-index: 110; font-size: 13px; }
 .landing-screen { position: relative; min-height: 100svh; overflow: hidden; background: linear-gradient(90deg,#241f19eb 0%,#302a2075 53%,#43392620),url('/frontier.svg') center / cover; }
 .landing-top { display: flex; align-items: center; gap: 22px; padding: 28px 5vw; font: 10px 'Space Mono',monospace; letter-spacing: .15em; color: #deccbb; border-bottom: 1px solid #edcca029; }
@@ -242,7 +243,7 @@ button:not(:disabled):active { transform: translateY(2px); }
 @media (max-width: 900px) { .hero-cowboys { right: -80px; opacity: .5; } .landing-content { padding-left: 6vw; } }
 @media (max-width: 600px) { .hero-cowboys { display: none; } .landing-content { padding: 32px 24px 82px; } .landing-top { padding: 20px 24px; } .landing-top > :last-child { display:none; } .landing-content h1 { font-size: clamp(64px, 17.8vw, 92px); margin: 20px 0; } .landing-tagline { font-size: 18px; } .landing-actions { max-width: none; } .action-tile kbd { display:none; } .lobby-layout { padding: 24px 16px 65px !important; } .lobby-teams { grid-template-columns: 1fr !important; } .lobby-title { font-size: 46px !important; } .lobby-subtitle { font-size: 15px !important; } .join-form { max-width: 500px; margin: auto; } .end-layout { padding: 28px 16px 70px !important; } .end-paper { padding: 30px 20px !important; } .end-title { font-size: 66px !important; letter-spacing: 4px !important; } .end-team { font-size: 24px !important; } }
 @media (max-height: 740px) { .controller-shell { padding-top: 12px; } .player-strip { margin: 5px 0; } .player-strip canvas { height: 68px !important; width: 53px !important; } .round-status { padding-top: 8px; } .action-tile { min-height: 62px; } }
-@media (prefers-reduced-motion: reduce) { *, *:before, *:after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-motion=full]) *, html:not([data-motion=full]) *:before, html:not([data-motion=full]) *:after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
 [data-motion=reduced] *, [data-motion=reduced] *:before, [data-motion=reduced] *:after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 
 /* Keep the existing western identity legible on short phone screens. */

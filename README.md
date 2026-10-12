@@ -103,3 +103,6 @@ The phone controller supports W/S to move, A for cover, R to reload, Q/E for dia
 - `npm test`
 - `npm run test:network` (requires a local server on port 3001, or set TEST_SERVER)
 - `npm run build`
+- `npm run build:animations` then `npx vite preview --config vite.animations.config.ts --port 4174`; open `/tests/animation-review.html` for 32 production-built canvas animation checks. This review page is not included in the normal game build.
+
+The motion button uses an accessibility icon (not the wind-event icon). Its pressed state matches the actual canvas and CSS behavior. With no saved preference the game respects system reduced motion; explicitly enabling full motion overrides it. Wind remains visible in reduced-motion mode, without rolling/scrolling effects.

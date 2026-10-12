@@ -59,12 +59,15 @@ export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, 
       const base = rand(i * 53 + 17) * span;
       const y = L.top - 90 + wrap(base + t * speed * dir);
       const len = 50 + rand(i * 19) * 110;
-      ctx.globalAlpha = 0.13 + rand(i * 7) * 0.18;
-      ctx.strokeStyle = i % 3 ? '#d9ad72' : '#f0d19a';
-      ctx.lineWidth = 2 + rand(i * 29) * 4;
+      ctx.globalAlpha = 0.3 + rand(i * 7) * 0.22;
+      const width = 2 + rand(i * 29) * 3;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.quadraticCurveTo(x + 12, y + dir * len * 0.45, x - 8, y + dir * len);
+      // Two-tone dust stays readable on the bright street, including rain.
+      ctx.strokeStyle = '#80603c'; ctx.lineWidth = width + 2;
+      ctx.stroke();
+      ctx.strokeStyle = '#f4d69d'; ctx.lineWidth = width;
       ctx.stroke();
     }
   }
@@ -75,7 +78,7 @@ export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, 
     const base = rand(i * 37 + 3) * span;
     const y = L.top - 90 + wrap(base + t * speed * dir);
     const r = (active ? 24 : 19) + rand(i * 23) * 10;
-    drawTumbleweed(ctx, x, y, r, motion ? t * dir * (active ? 4.5 : 1.1) + i : i, active ? 0.88 : 0.5, i + 1);
+    drawTumbleweed(ctx, x, y, r, motion ? t * dir * (active ? 4.5 : 1.1) + i : i, active ? 1 : 0.8, i + 1);
   }
   ctx.restore();
 }
@@ -132,6 +135,7 @@ function drawTumbleweed(ctx: CanvasRenderingContext2D, x: number, y: number, r: 
   ctx.save();
   ctx.translate(x, y); ctx.rotate(rotation); ctx.scale(1.08, 0.86); ctx.globalAlpha = alpha;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.shadowColor = 'rgba(58,38,20,0.3)'; ctx.shadowBlur = 2;
 
   // Several broken, lopsided loops form a thorny ball. Deliberately avoid a
   // clean outer rim, radial spokes or a centre hub — those read as a wheel.

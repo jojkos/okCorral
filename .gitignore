@@ -1,6 +1,7 @@
 # Dependencies
 node_modules
 /dist
+/dist-animation-review
 /.next
 /out
 /build

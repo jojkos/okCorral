@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Team } from '../../shared/types';
-import { reducedMotion } from './GamePreferences';
+import { reducedMotion } from '../lib/motionPreferences';
 import { drawCowboy } from '../lib/cowboyDraw';
 
 // The cowboy is drawn around origin (0,0) with bounds roughly

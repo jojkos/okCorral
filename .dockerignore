@@ -1,6 +1,7 @@
 fly.toml
 node_modules
 dist
+dist-animation-review
 .git
 .gitignore
 README.md

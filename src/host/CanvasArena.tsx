@@ -5,7 +5,7 @@ import { resolvedBulletFlight } from '../../shared/bulletFlight';
 import { socket, serverNow } from '../socket';
 import { VOLLEY } from '../lib/presentation';
 import { roundHeadline } from '../lib/recap';
-import { reducedMotion } from '../components/GamePreferences';
+import { reducedMotion } from '../lib/motionPreferences';
 import * as sound from '../sound';
 import { BADGE_MIN_Y, CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, barrelX, bulletLaneFeet, clamp01, facingOf, rand, slotLayout, teamX } from './arena/layout';
 import { drawBackground, drawBarrel, drawStrongWindWeather, drawVignette, drawWalkingWoman } from './arena/scene';

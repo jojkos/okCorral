@@ -286,9 +286,9 @@
 [data-motion=reduced] .mm-cell.is-me .mm-avatar { box-shadow: 0 0 0 2px #ffd875; }
 [data-motion=reduced] .emote-bar.cooling .emote-cool { animation: none !important; width: 100%; opacity: .5; }
 @media (prefers-reduced-motion: reduce) {
-  .mm-cell.is-me .mm-avatar, .mm-aim line, .ctl-round.urgent .ctl-round-row b, .recap-card, .emote-btn.sent { animation: none !important; }
-  .mm-cell.is-me .mm-avatar { box-shadow: 0 0 0 2px #ffd875; }
-  .emote-bar.cooling .emote-cool { animation: none !important; width: 100%; opacity: .5; }
+  html:not([data-motion=full]) :is(.mm-cell.is-me .mm-avatar, .mm-aim line, .ctl-round.urgent .ctl-round-row b, .recap-card, .emote-btn.sent) { animation: none !important; }
+  html:not([data-motion=full]) .mm-cell.is-me .mm-avatar { box-shadow: 0 0 0 2px #ffd875; }
+  html:not([data-motion=full]) .emote-bar.cooling .emote-cool { animation: none !important; width: 100%; opacity: .5; }
 }
 
 /* Outlaws: mirror the board so it matches the TV — sheriffs left, outlaws right. */
