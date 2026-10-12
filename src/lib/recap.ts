@@ -4,6 +4,7 @@ export type RecapTone = 'good' | 'bad' | 'neutral';
 export interface RecapLine { text: string; tone: RecapTone }
 
 const nameOf = (gs: GameState, id?: string) => gs.players.find(p => p.id === id)?.name ?? 'someone';
+const shooterName = (gs: GameState, bullet: Bullet) => bullet.source === 'gatling' ? 'The gatling gunman' : nameOf(gs, bullet.shooterId);
 
 // What happened to / because of one player in the last resolved round.
 export function personalRecap(gs: GameState, me: Player): RecapLine[] {
@@ -18,8 +19,8 @@ export function personalRecap(gs: GameState, me: Player): RecapLine[] {
       else out.push({ text: 'Your shot hit nothing but air', tone: 'bad' });
     }
     if (b.targetId === me.id) {
-      if (b.hit === 'player') out.push({ text: b.lethal ? `${nameOf(gs, b.shooterId)} finished you off` : `${nameOf(gs, b.shooterId)} hit you`, tone: 'bad' });
-      else if (b.hit === 'barrel') out.push({ text: `Your barrel blocked ${nameOf(gs, b.shooterId)}`, tone: 'good' });
+      if (b.hit === 'player') out.push({ text: b.lethal ? `${shooterName(gs, b)} finished you off` : `${shooterName(gs, b)} hit you`, tone: 'bad' });
+      else if (b.hit === 'barrel') out.push({ text: `Your barrel blocked ${shooterName(gs, b)}`, tone: 'good' });
     }
   }
   if (!out.length) {
@@ -32,6 +33,7 @@ export function personalRecap(gs: GameState, me: Player): RecapLine[] {
 // Short headline for the whole round, used by host banners.
 export function roundHeadline(gs: GameState): string | null {
   const bullets = gs.lastTickBullets || [];
+  if (bullets.some(b => b.source === 'gatling')) return 'GATLING MAYHEM!';
   if (bullets.some(b => b.hit === 'woman')) return 'BYSTANDER SHOT!';
   if (gs.lastTickSuicides.length) return gs.lastTickSuicides.length > 1 ? 'GUILT CLAIMS THEM' : 'GUILT TAKES ITS TOLL';
   const kills = bullets.filter(b => b.lethal);

@@ -12,3 +12,6 @@
 .audio-level input:disabled { opacity: .5; cursor: default; }
 .audio-level output { min-width: 36px; text-align: right; color: #d8d5c5; font-variant-numeric: tabular-nums; }
 .audio-preferences input:focus-visible, .audio-preferences button:focus-visible { outline: 2px solid #a6ddd2; outline-offset: 3px; }
+.audio-track { display: grid; gap: 3px; margin-top: 7px; color: #d8d5c5; font-size: 11px; }
+.audio-track strong { color: #edc38a; font-size: 12px; font-weight: 500; }
+.audio-track button { padding: 2px 5px; border: 1px solid #87988c; border-radius: 4px; background: transparent; color: #edc38a; cursor: pointer; }

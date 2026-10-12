@@ -1,5 +1,6 @@
 import type { WalkingWomanState } from '../../../shared/types';
 import { bulletLaneFeet, clamp01, rand, type Layout } from './layout';
+import { GATLING_ENTRY_Y, GATLING_STOP_Y, GATLING_EXIT_Y } from '../../../shared/gatlingGeometry';
 
 type Canvas = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
@@ -105,9 +106,33 @@ export function drawWomanBloodTrail(ctx: Canvas, L: Layout, woman: WalkingWomanS
   ctx.restore();
 }
 
+/** Short wheel marks start at contact and share the carriage's track width and
+ * perspective. They don't grow from the skyline or follow the sliding body forever. */
+export function drawGatlingWheelMarks(ctx: Canvas, L: Layout, woman: WalkingWomanState, feet: number | null) {
+  if (!woman.crushedByGatling || woman.gatlingCrushSlot == null) return;
+  const start = bulletLaneFeet(L, woman.gatlingCrushSlot);
+  const end = woman.gatlingCrushedThisRound && feet !== null ? Math.min(start + L.slotHeight, feet) : start + L.slotHeight;
+  if (end <= start) return;
+  ctx.save(); ctx.lineCap = 'round';
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    for (let i = 0; i <= 20; i++) {
+      const y = start + (end - start) * i / 20;
+      const scale = y < GATLING_STOP_Y ? 0.38 + 0.52 * clamp01((y - GATLING_ENTRY_Y) / (GATLING_STOP_Y - GATLING_ENTRY_Y))
+        : 0.9 + 0.32 * clamp01((y - GATLING_STOP_Y) / (GATLING_EXIT_Y - GATLING_STOP_Y));
+      const x = L.midX + side * 65 * Math.cos(0.36) * scale;
+      if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.lineWidth = 5 * L.s; ctx.strokeStyle = 'rgba(79,58,39,0.23)'; ctx.stroke();
+    ctx.lineWidth = 1.4 * L.s; ctx.strokeStyle = 'rgba(180,140,88,0.3)'; ctx.setLineDash([3, 7]); ctx.stroke(); ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+
 /** Hand-painted side-lying silhouette in the same ink/teal/ochre palette. */
-export function drawDeadWoman(ctx: Canvas, x: number, feet: number, s: number, headSide: number) {
-  ctx.save(); ctx.translate(x, feet - 12 * s); ctx.scale(s * headSide, s);
+export function drawDeadWoman(ctx: Canvas, x: number, feet: number, s: number, headSide: number, crushed: boolean | number = false) {
+  const compression = typeof crushed === 'boolean' ? Number(crushed) : clamp01(crushed);
+  ctx.save(); ctx.translate(x, feet - (12 - 5 * compression) * s); ctx.scale(s * headSide, s * (1 - 0.34 * compression));
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
   const shadow = ctx.createRadialGradient(-1, 9, 4, -1, 9, 91);

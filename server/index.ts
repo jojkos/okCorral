@@ -8,6 +8,7 @@ import {
   TakeSeatSchema,
   LockActionSchema,
   GameConfigSchema,
+  GameConfigPatchSchema,
 } from "../shared/validation.js";
 import { EMOTES } from "../shared/types.js";
 import type {
@@ -286,7 +287,9 @@ io.on("connection", (socket) => {
     if (!hostId) return;
     const roomCode = roomManager.getPlayerRoom(hostId);
     if (roomCode) {
-      roomManager.updateConfig(roomCode, hostId, config);
+      const parsed = GameConfigPatchSchema.safeParse(config);
+      if (!parsed.success) { socket.emit('error', 'Invalid game settings'); return; }
+      roomManager.updateConfig(roomCode, hostId, parsed.data);
     }
   });
 

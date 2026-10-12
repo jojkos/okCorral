@@ -9,6 +9,8 @@
  * exponential ramps, so there are no clicks and no invalid exp-ramps.
  */
 
+import { createMusicTransport, musicNotes, type MusicNote } from './musicScore';
+
 export const FLOOR = 0.0001;
 
 export const midiToFreq = (m: number): number => 440 * Math.pow(2, (m - 69) / 12);
@@ -191,12 +193,13 @@ export function makeNoise(c: BaseAudioContext, durationSec: number, color: 'whit
 
 // ---- Karplus-Strong plucked strings (precomputed, cached per pitch) ----
 
-export type PluckKind = 'nylon' | 'bass' | 'twang';
+export type PluckKind = 'nylon' | 'bass' | 'twang' | 'banjo';
 
 const KS_PARAMS: Record<PluckKind, { decay: number; bright: number }> = {
   nylon: { decay: 1.9, bright: 0.32 },
   bass: { decay: 1.5, bright: 0.28 },
   twang: { decay: 1.6, bright: 0.48 },
+  banjo: { decay: 1.25, bright: 0.68 },
 };
 
 interface KS { buffer: AudioBuffer; rate: number }
@@ -271,16 +274,7 @@ export function pluck(c: BaseAudioContext, dest: AudioNode, freq: number, when: 
   src.start(when);
 }
 
-// ---- The score -----------------------------------------------------------
-// A slow, fingerpicked nylon guitar and a restrained bass. Every bar has rests;
-// intensity adds a light wooden brush, never another competing lead voice.
-const CHORDS = [
-  { root: 45, fifth: 40, notes: [52, 57, 60, 64] },
-  { root: 43, fifth: 38, notes: [50, 55, 59, 62] },
-  { root: 41, fifth: 36, notes: [53, 57, 60, 65] },
-  { root: 40, fifth: 35, notes: [52, 56, 59, 64] },
-];
-const PROG = [0, 0, 1, 1, 2, 2, 3, 3];
+// ---- Ambient spaghetti-western score -----------------------------------
 export interface MusicEnv {
   ctx: AudioContext;
   dest: AudioNode;
@@ -293,63 +287,155 @@ export interface MusicEnv {
 export interface MusicHandle {
   stop: () => void;
   setIntensity: (level: number) => void;
+  syncRound: (durationSec: number) => void;
 }
+
+/** Music-only room: never route the score through the effects volume bus. */
+export function createMusicVoices(c: BaseAudioContext, dest: AudioNode, white: AudioBuffer) {
+  const owned: AudioNode[] = [];
+  const running: AudioScheduledSourceNode[] = [];
+  const keep = <T extends AudioNode>(n: T): T => { owned.push(n); return n; };
+  const room = keep(c.createConvolver());
+  const impulse = c.createBuffer(2, Math.ceil(c.sampleRate * 3.1), c.sampleRate);
+  // Dark, diffuse decay; a gentle space around strings, not a repeating echo.
+  let seed = 7841;
+  for (let ch = 0; ch < 2; ch++) {
+    const data = impulse.getChannelData(ch);
+    let low = 0;
+    for (let i = 0; i < data.length; i++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+      low += 0.16 * (((seed >>> 0) / 4294967296) * 2 - 1 - low);
+      data[i] = low * Math.pow(1 - i / data.length, 3) * Math.min(1, i / (c.sampleRate * 0.025));
+    }
+  }
+  room.buffer = impulse;
+  const wet = keep(c.createGain()); wet.gain.value = 0.28;
+  room.connect(wet).connect(dest);
+  const instrumentBus = (panValue: number, cutoff: number, roomSend: number) => {
+    const filter = keep(c.createBiquadFilter());
+    filter.type = 'lowpass'; filter.frequency.value = cutoff; filter.Q.value = 0.45;
+    const pan = keep(makePanner(c, panValue).node);
+    const send = keep(c.createGain()); send.gain.value = roomSend;
+    filter.connect(pan).connect(dest);
+    pan.connect(send).connect(room);
+    return filter;
+  };
+  const banjo = instrumentBus(-0.19, 2600, 0.65);
+  const guitarOut = instrumentBus(-0.28, 2300, 1.1);
+  const guitar = keep(c.createGain()); guitar.gain.value = 0.94;
+  guitar.connect(guitarOut);
+  // Soft vintage-amp tremolo and one dark slapback behind the low strings.
+  // This free-running shimmer is unrelated to the round boundary.
+  const tremolo = keep(c.createOscillator()), tremoloDepth = keep(c.createGain());
+  tremolo.frequency.value = 3.7; tremoloDepth.gain.value = 0.055;
+  tremolo.connect(tremoloDepth).connect(guitar.gain);
+  tremolo.start(c.currentTime); running.push(tremolo);
+  const slap = keep(c.createDelay(1)); slap.delayTime.value = 0.19;
+  const slapTone = keep(c.createBiquadFilter()); slapTone.type = 'lowpass'; slapTone.frequency.value = 1450;
+  const slapGain = keep(c.createGain()); slapGain.gain.value = 0.14;
+  guitar.connect(slap).connect(slapTone).connect(slapGain).connect(guitarOut);
+  const bass = instrumentBus(0, 420, 0.2);
+  const harmonica = instrumentBus(0.17, 1750, 1);
+  const whistle = instrumentBus(0.3, 1900, 1.5);
+  const pad = instrumentBus(-0.04, 750, 1.2);
+  const reedWave = c.createPeriodicWave(
+    new Float32Array(7), new Float32Array([0, 1, 0.44, 0.23, 0.1, 0.04, 0.015]),
+  );
+
+  const playReed = (note: MusicNote, when: number) => {
+    const osc = c.createOscillator(), envelope = c.createGain();
+    osc.setPeriodicWave(reedWave);
+    const freq = midiToFreq(note.midi), end = when + note.duration;
+    // Breath-led attack and a tiny bend; no piercing high-register whistle.
+    osc.frequency.setValueAtTime(freq * 0.985, when);
+    osc.frequency.exponentialRampToValueAtTime(freq, when + 0.3);
+    const attack = Math.min(0.32, note.duration * 0.15);
+    shape(envelope.gain, when, attack, note.gain, end, note.duration * 0.5, 0.78);
+    osc.connect(envelope).connect(harmonica);
+    const lfo = c.createOscillator(), depth = c.createGain();
+    lfo.frequency.value = 4.6;
+    depth.gain.setValueAtTime(0, when);
+    depth.gain.linearRampToValueAtTime(9, when + note.duration * 0.65);
+    lfo.connect(depth).connect(osc.detune);
+    osc.start(when); lfo.start(when);
+    osc.stop(end + 0.05); lfo.stop(end + 0.05);
+    osc.onended = () => [osc, envelope, lfo, depth].forEach(safeDisconnect);
+    burst(c, {dest: harmonica, when, buffer: white, dur: note.duration,
+      gain: note.gain * 0.055, attack, hold: note.duration * 0.5, sustain: 0.65,
+      filter: {type: 'bandpass', freq: 1450, q: 0.5}});
+  };
+  return {
+    setWarmth(level: number) { harmonica.frequency.setTargetAtTime(1750 + clamp(level, 0, 1) * 120, c.currentTime, 2); },
+    play(note: MusicNote, when: number) {
+      const freq = midiToFreq(note.midi);
+      if (note.instrument === 'banjo') {
+        pluck(c, banjo, freq, when, note.gain, 'banjo');
+        // Quiet membrane resonances give the pluck a wooden banjo body.
+        tone(c, {dest: banjo, when, freq: 560, freqEnd: 540, dur: 0.09, gain: note.gain * 0.055, attack: 0.008});
+        tone(c, {dest: banjo, when, freq: 980, dur: 0.06, gain: note.gain * 0.023, attack: 0.007});
+      } else if (note.instrument === 'guitar') {
+        const string = ksBuffer(c, freq, 'twang');
+        const src = c.createBufferSource(), gain = c.createGain();
+        src.buffer = string.buffer;
+        src.playbackRate.setValueAtTime(string.rate * 0.992, when);
+        src.playbackRate.exponentialRampToValueAtTime(string.rate, when + 0.1);
+        gain.gain.value = note.gain;
+        src.connect(gain).connect(guitar);
+        src.onended = () => { safeDisconnect(src); safeDisconnect(gain); };
+        src.start(when);
+        tone(c, {dest: guitar, when, freq: freq * 2, dur: note.duration, gain: note.gain * 0.045,
+          type: 'triangle', attack: 0.012});
+      } else if (note.instrument === 'whistle') {
+        tone(c, {dest: whistle, when, freq: freq * 0.99, freqEnd: freq, glide: 0.2,
+          dur: note.duration, gain: note.gain, attack: 0.18, hold: note.duration * 0.45, sustain: 0.78,
+          vibrato: {rate: 4.3, cents: 6, delay: 0.35, ramp: 0.5}});
+        burst(c, {dest: whistle, when, buffer: white, dur: note.duration, gain: note.gain * 0.07,
+          attack: 0.18, filter: {type: 'bandpass', freq: 1800, q: 0.8}});
+      } else if (note.instrument === 'harmonica') {
+        playReed(note, when);
+      } else if (note.instrument === 'bass') {
+        tone(c, {dest: bass, when, freq, dur: note.duration, gain: note.gain, type: 'triangle', attack: 0.14, hold: 0.3, sustain: 0.65});
+      } else {
+        tone(c, {dest: pad, when, freq, dur: note.duration, gain: note.gain, type: 'sine',
+          attack: Math.min(1.8, note.duration * 0.22), hold: note.duration * 0.4, sustain: 0.8,
+          vibrato: {rate: 0.17, cents: 3, delay: 0.5, ramp: 1}});
+      }
+    },
+    disconnect() {
+      for (const source of running) { try { source.stop(); } catch { /* already stopped */ } }
+      owned.forEach(safeDisconnect);
+    },
+  };
+}
+
 export function startMusic(env: MusicEnv): MusicHandle {
   const c = env.ctx;
-  const owned: AudioNode[] = [];
-  const keep = <T extends AudioNode>(n: T): T => { owned.push(n); return n; };
-  const bus = keep(c.createGain());
+  const bus = c.createGain();
   bus.gain.setValueAtTime(0, c.currentTime);
-  bus.gain.linearRampToValueAtTime(1, c.currentTime + 1.8);
+  bus.gain.linearRampToValueAtTime(1, c.currentTime + 2.8);
   bus.connect(env.dest);
-  const guitar = keep(c.createGain());
-  const body = keep(c.createBiquadFilter());
-  body.type = 'peaking'; body.frequency.value = 230; body.Q.value = 0.8; body.gain.value = 2;
-  const warmth = keep(c.createBiquadFilter());
-  warmth.type = 'lowpass'; warmth.frequency.value = 2300; warmth.Q.value = 0.5;
-  const pan = makePanner(c, -0.13); keep(pan.node);
-  guitar.connect(body).connect(warmth).connect(pan.node).connect(bus);
-  const bass = keep(c.createBiquadFilter());
-  bass.type = 'lowpass'; bass.frequency.value = 480; bass.Q.value = 0.5; bass.connect(bus);
-  let level = clamp(env.intensity, 0, 1), target = level;
-  let step = 0, nextTime = c.currentTime + 0.1, stopped = false;
+  const voices = createMusicVoices(c, bus, env.white);
+  const transport = createMusicTransport(c.currentTime);
+  voices.setWarmth(env.intensity);
+  let stopped = false;
   const tick = () => {
     if (stopped) return;
-    const now = c.currentTime;
     const lookahead = typeof document !== 'undefined' && document.hidden ? 1.2 : 0.15;
-    if (nextTime < now - 0.05) nextTime = now + 0.03;
-    while (nextTime < now + lookahead) {
-      level += (target - level) * 0.2;
-      const eighth = 60 / (76 + level * 4) / 2;
-      const slot = step % 8, bar = Math.floor(step / 8) % 8;
-      const chord = CHORDS[PROG[bar]];
-      if (!env.isMuted()) {
-        // Four fingers, with the last beat left open on alternating bars.
-        const pattern = bar % 2 ? [0, -1, 2, -1, 1, -1, -1, -1] : [0, -1, 2, 3, -1, 1, -1, -1];
-        const note = pattern[slot];
-        if (note >= 0) pluck(c, guitar, midiToFreq(chord.notes[note]), nextTime + Math.random() * 0.006, slot === 0 ? 0.38 : 0.28, 'nylon');
-        if (slot === 0) pluck(c, bass, midiToFreq(chord.root), nextTime, 0.48, 'bass');
-        if (slot === 4 && bar % 2 === 0) pluck(c, bass, midiToFreq(chord.fifth), nextTime, 0.3, 'bass');
-        // A sparse higher guitar answer replaces the high whistle.
-        if (bar % 2 === 1 && slot === 5) pluck(c, guitar, midiToFreq(chord.notes[3]), nextTime, 0.2, 'nylon');
-        if (level > 0.5 && (slot === 2 || slot === 6)) burst(c, {
-          dest: bus, when: nextTime, buffer: env.brown, dur: 0.065,
-          gain: 0.1 * (level - 0.5), attack: 0.008,
-          filter: { type: 'bandpass', freq: 900, q: 0.6 },
-        });
-      }
-      nextTime += eighth; step++;
+    for (const event of transport.due(c.currentTime, lookahead)) {
+      if (env.isMuted()) continue;
+      for (const note of musicNotes(event.step, event.eighth)) voices.play(note, event.when + (note.delay ?? 0));
     }
   };
   const timer = setInterval(tick, 25); tick();
   return {
-    setIntensity: (value) => { target = clamp(value, 0, 1); },
-    stop: () => {
+    setIntensity(value) { if (!stopped) voices.setWarmth(Number.isFinite(value) ? value : 0); },
+    syncRound(durationSec) { transport.setRoundDuration(durationSec); },
+    stop() {
       if (stopped) return;
       stopped = true; clearInterval(timer);
       bus.gain.cancelScheduledValues(c.currentTime);
-      bus.gain.setTargetAtTime(0, c.currentTime, 0.12);
-      setTimeout(() => owned.forEach(safeDisconnect), 700);
+      bus.gain.setTargetAtTime(0, c.currentTime, 0.14);
+      setTimeout(() => { voices.disconnect(); safeDisconnect(bus); }, 900);
     },
   };
 }

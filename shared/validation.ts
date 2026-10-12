@@ -19,10 +19,20 @@ export const TakeSeatSchema = z.object({
 
 export const LockActionSchema = ActionTypeSchema;
 
+export const RandomEventSettingsSchema = z.object({
+  strongWind: z.boolean(),
+  walkingWoman: z.boolean(),
+  gatlingMan: z.boolean(),
+  rain: z.boolean(),
+}).partial().strict();
+
 export const GameConfigSchema = z.object({
   tickDuration: z.number().min(1000).max(10000).default(4000),
   slotsPerSide: z.number().min(2).max(8).default(5),
+  events: RandomEventSettingsSchema.default({}),
 });
+
+export const GameConfigPatchSchema = GameConfigSchema.partial().strict();
 
 export type JoinRoomInput = z.infer<typeof JoinRoomSchema>;
 export type SelectTeamInput = z.infer<typeof SelectTeamSchema>;

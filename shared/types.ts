@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ShotFlight } from './ballistics.js';
 
 // Teams
 export type Team = "sheriffs" | "outlaws";
@@ -80,12 +81,26 @@ export interface Bullet {
   shooterId?: string;
   targetId?: string; // player hit, or owner of the barrel that was hit
   lethal?: boolean; // this bullet took the target's last heart
+  source?: "player" | "gatling";
+  targetTeam?: Team; // present for shots fired from the middle of the street
+  civilianHitT?: number; // first body intersection on the shared flight curve
+  flight?: ShotFlight; // identical authoritative path for bullets and bird collisions
+  firedAt?: number; // ms after resolutionStartedAt
 }
 
 // Game configuration
+export interface RandomEventSettings {
+  strongWind: boolean;
+  walkingWoman: boolean;
+  gatlingMan: boolean;
+  rain: boolean;
+}
+
 export interface GameConfig {
   tickDuration: number; // ms, default 4000
   slotsPerSide: number; // default 5
+  /** Missing flags default to enabled for older clients/configurations. */
+  events?: Partial<RandomEventSettings>;
 }
 
 export type WindDirection = "up" | "down";
@@ -100,10 +115,38 @@ export interface StrongWindState {
   cooldownRoundsRemaining: number;
 }
 
-export type WalkingWomanPhase = "inactive" | "walking" | "dead" | "gone";
+export interface SwallowState {
+  id: string;
+  seed: number;
+  bornAt: number;
+  /** Presence means dead. Ground position persists across weather events. */
+  remains?: {
+    x: number; y: number; fromY: number;
+    hitX: number; hitY: number; hitAngle: number; hitAt: number; hitTick: number;
+  };
+}
 
-// The woman occupies one street lane per round. When hit, the event remains
-// visible through that round's resolution, then goes on cooldown.
+export interface RainState {
+  phase: 'dry' | 'warning' | 'active';
+  warningRoundsRemaining: number;
+  swallows: SwallowState[];
+  /** Makes the ammunition loss idempotent for broadcasts/reconnects. */
+  ammoAppliedTick: number | null;
+}
+
+export type WalkingWomanPhase = "inactive" | "walking" | "waiting" | "dead" | "gone";
+
+export interface GatlingCrush {
+  leg: 'arrival' | 'departure';
+  /** Planning fraction on arrival; resolution milliseconds on departure. */
+  at: number;
+  /** Exact, possibly fractional lane at physical contact. */
+  slot: number;
+  before: Pick<WalkingWomanState, 'phase' | 'slot' | 'fromSlot' | 'direction' | 'bloodTrail' | 'killedFromTeam'>;
+}
+
+// A survivor waits off-board, then returns in the opposite direction. A dead
+// woman can be dragged away, but "gone" is permanent and never respawns her.
 export interface WalkingWomanState {
   phase: WalkingWomanPhase;
   direction: WindDirection | null;
@@ -112,6 +155,28 @@ export interface WalkingWomanState {
   cooldownRoundsRemaining: number;
   bloodTrail: number[];
   killedFromTeam: Team | null;
+  /** Once the gatling cart has run over the body, it keeps sliding down-street. */
+  crushedByGatling?: boolean;
+  /** Present this round's crush at wheel contact rather than before arrival. */
+  gatlingCrushedThisRound?: boolean;
+  gatlingCrush?: GatlingCrush;
+  /** Persistent contact position for short wheel marks, not full-street lines. */
+  gatlingCrushSlot?: number;
+}
+
+export interface GatlingTarget {
+  team: Team;
+  slot: number;
+}
+
+export type GatlingManPhase = "inactive" | "warning" | "active";
+
+// The targets are rolled when the event starts so every connected screen
+// sees the exact same eight-shot burst during resolution.
+export interface GatlingManState {
+  phase: GatlingManPhase;
+  cooldownRoundsRemaining: number;
+  targets: GatlingTarget[];
 }
 
 export interface PendingSuicide {
@@ -134,7 +199,9 @@ export interface GameState {
   tick: number;
   config: GameConfig;
   strongWind: StrongWindState;
+  rain: RainState;
   walkingWoman: WalkingWomanState;
+  gatlingMan: GatlingManState;
   pendingSuicides: PendingSuicide[];
   lastTickSuicides: string[];
   players: Player[];

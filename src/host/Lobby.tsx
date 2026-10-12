@@ -11,6 +11,8 @@ import {
   westernStyles as S,
 } from '../components/WesternUI';
 import HowToPlay from './components/HowToPlay';
+import EventSwitches from './components/EventSwitches';
+import { eventSettings } from '../../shared/eventSettings';
 import { BotBadge, PlayerAvatar, SessionScore, hasSessionGames } from './components/HostBits';
 import './host.css';
 
@@ -114,6 +116,10 @@ export default function Lobby({ roomCode, gameState, error }: LobbyProps) {
           <HowToPlay roundSeconds={roundSeconds} />
           <TeamPanel team="outlaws" players={outlaws} max={slotsPerSide} />
         </main>
+
+        <EventSwitches settings={eventSettings(gameState?.config ?? {})}
+          disabled={!gameState || gameState.phase !== 'lobby' || !socket.connected}
+          onToggle={(event, enabled) => updateConfig({ events: { [event]: enabled } })} />
 
         {/* Unassigned */}
         {unassigned.length > 0 && (

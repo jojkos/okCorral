@@ -14,7 +14,11 @@ import type {
 } from "../shared/types.js";
 import { resolveActions } from "./actions.js";
 import { chooseBotAction, BOT_NAMES } from "./bots.js";
-import { advanceStrongWind, advanceWalkingWoman, initialStrongWindState, initialWalkingWomanState } from "./randomEvents.js";
+import { initialGatlingManState, initialStrongWindState, initialWalkingWomanState } from "./randomEvents.js";
+import { initialRainState } from './rain.js';
+import { advanceRoundEvents } from './roundEvents.js';
+import { eventSettings } from '../shared/eventSettings.js';
+import { GameConfigPatchSchema } from '../shared/validation.js';
 
 interface Room {
   code: string;
@@ -98,9 +102,11 @@ function createInitialState(roomCode: string, config: GameConfig): GameState {
     revision: 0,
     phase: "lobby",
     tick: 0,
-    config,
+    config: { ...config, events: eventSettings(config) },
     strongWind: initialStrongWindState(),
+    rain: initialRainState(),
     walkingWoman: initialWalkingWomanState(),
+    gatlingMan: initialGatlingManState(),
     pendingSuicides: [],
     lastTickSuicides: [],
     players: [],
@@ -430,7 +436,9 @@ export class RoomManager {
 
     room.state.tick = 0;
     room.state.strongWind = initialStrongWindState();
+    room.state.rain = initialRainState();
     room.state.walkingWoman = initialWalkingWomanState();
+    room.state.gatlingMan = initialGatlingManState();
     room.state.pendingSuicides = [];
     room.state.lastTickSuicides = [];
     room.state.winner = null;
@@ -451,13 +459,7 @@ export class RoomManager {
     room.state.resolutionStartedAt = undefined;
     room.state.phase = "planning";
     room.state.tick++;
-    room.state.strongWind = advanceStrongWind(room.state.strongWind, room.state.tick);
-    room.state.walkingWoman = advanceWalkingWoman(
-      room.state.walkingWoman,
-      room.state.tick,
-      room.state.config.slotsPerSide,
-      room.state.strongWind,
-    );
+    advanceRoundEvents(room.state);
     room.state.pendingActions = [];
     room.state.tickStartTime = Date.now();
 
@@ -572,7 +574,9 @@ export class RoomManager {
     room.state.phase = "lobby";
     room.state.tick = 0;
     room.state.strongWind = initialStrongWindState();
+    room.state.rain = initialRainState();
     room.state.walkingWoman = initialWalkingWomanState();
+    room.state.gatlingMan = initialGatlingManState();
     room.state.pendingSuicides = [];
     room.state.lastTickSuicides = [];
     room.state.winner = null;
@@ -712,6 +716,11 @@ export class RoomManager {
   ): void {
     const room = rooms.get(roomCode);
     if (!room || room.hostId !== hostId || room.state.phase !== "lobby") return;
+
+    const parsed = GameConfigPatchSchema.safeParse(config);
+    if (!parsed.success) return;
+    config = parsed.data;
+    if (config.events) room.state.config.events = { ...eventSettings(room.state.config), ...config.events };
 
     if (config.tickDuration !== undefined) {
       room.state.config.tickDuration = Math.max(

@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowUp, ArrowDown, ArrowUpRight, ArrowDownRight, ArrowRight, Shield, RotateCw, Check, LoaderCircle, Heart, Crosshair, AlertTriangle, ShieldCheck, X } from 'lucide-react';
+import { ArrowUp, ArrowDown, ArrowUpRight, ArrowDownRight, ArrowRight, Shield, RotateCw, Check, LoaderCircle, Heart, Crosshair, AlertTriangle, ShieldCheck, CloudRain, X } from 'lucide-react';
 import type { ClientPlayer, GameState, ActionType } from '../../shared/types';
 import { socket, serverNow } from '../socket';
 import { VOLLEY } from '../lib/presentation';
-import { playTickStart, playTickResolve, playLockAction } from '../sound';
+import { playTickResolve, playLockAction } from '../sound';
 import * as sfx from '../sound';
 import { WesternBackdrop } from '../components/WesternUI';
 import CowboyPortrait from '../components/CowboyPortrait';
@@ -42,16 +42,16 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
     const timer = setInterval(() => setNow(serverNow()), 50);
     const online = () => setConnected(true), offline = () => setConnected(false);
     socket.on('connect', online); socket.on('disconnect', offline);
-    socket.on('tickStart', playTickStart); socket.on('tickEnd', playTickResolve);
-    return () => { mounted.current = false; clearInterval(timer); socket.off('connect', online); socket.off('disconnect', offline); socket.off('tickStart', playTickStart); socket.off('tickEnd', playTickResolve); };
+    socket.on('tickEnd', playTickResolve);
+    return () => { mounted.current = false; clearInterval(timer); socket.off('connect', online); socket.off('disconnect', offline); socket.off('tickEnd', playTickResolve); };
   }, []);
   useEffect(() => { setPending(null); setLockedAs(null); setNotice(''); inFlight.current = false; }, [gameState?.tick, gameState?.roomCode]);
   useEffect(() => { if (confirmed) { setPending(null); inFlight.current = false; setNotice(''); } }, [confirmed]);
   const submit = useCallback((action: ActionType) => {
     if (!socket.connected || !planning || !mine?.isAlive || confirmed || pending || inFlight.current) return;
     if ((action.startsWith('SHOOT') && ammo === 0) || (action === 'RELOAD' && ammo === 3)) return;
-    // Presentation guard: these tiles are disabled because the server would ignore them.
-    const offset = SHOT_OFFSET[action] ?? MOVE_OFFSET[action];
+    // Movement stops at the edge; aiming beyond it is legal and can use wind.
+    const offset = MOVE_OFFSET[action];
     if (offset != null && offset !== 0 && (mine.slot + offset < 0 || mine.slot + offset >= (gameState?.config.slotsPerSide ?? 5))) return;
     const tick = gameState!.tick;
     const startedAt = gameState!.tickStartTime!;
@@ -161,6 +161,7 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
         : <span className="mm-threat calm"><ShieldCheck size={13} /> No loaded guns can reach you</span>) : null} />}
 
     {suicideDue && <div className="ctl-event-warning" role="alert"><AlertTriangle size={18} /><span><strong>You shot the woman.</strong> Guilt takes your life when this round resolves.</span></div>}
+    {gameState?.rain?.phase === 'active' && <div className="ctl-rain" role="status"><CloudRain size={18} /><span><strong>Rain · wet powder</strong> One loaded bullet lost at rain onset. Reload still works.</span></div>}
 
     <div className={`lock-strip ctl-lock ${confirmed ? 'confirmed' : ''} ${urgent ? 'urgent' : ''}`} role="status" aria-live="polite">
       {confirmed ? <Check size={18} /> : pending ? <LoaderCircle size={18} className="spin" /> : <Crosshair size={18} />}

@@ -1,8 +1,9 @@
 import type { Barrel, StrongWindState, Team, WalkingWomanState } from '../../../shared/types';
-import { drawDeadWoman, drawWomanBloodTrail } from './womanRemains';
+import { drawDeadWoman, drawGatlingWheelMarks, drawWomanBloodTrail } from './womanRemains';
 import { drawAliveWoman } from './womanWalking';
 import { COL, roundRect } from '../../lib/cowboyDraw';
-import { CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, bulletLaneFeet, rand } from './layout';
+import { CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, bulletLaneFeet, rand, womanScale } from './layout';
+
 
 export function drawBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, t: number) {
   const pad = 60;
@@ -79,21 +80,42 @@ export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, 
   ctx.restore();
 }
 
+
 /** A clearly neutral civilian walking down the middle of the firing lanes. */
-export function drawWalkingWoman(ctx: CanvasRenderingContext2D, L: Layout, woman: WalkingWomanState, t: number, motion: boolean, roundProgress: number) {
-  const s = Math.max(0.62, L.s * 0.92);
+export function drawWalkingWoman(ctx: CanvasRenderingContext2D, L: Layout, woman: WalkingWomanState, t: number, motion: boolean, roundProgress: number, crush?: { fall: number; compression: number; dust: number }) {
+  const s = womanScale(L);
   const headSide = woman.killedFromTeam === 'outlaws' ? -1 : 1;
   const targetFeet = woman.slot === null ? null : bulletLaneFeet(L, woman.slot);
   const fromFeet = woman.fromSlot === null ? targetFeet : bulletLaneFeet(L, woman.fromSlot);
   const feet = targetFeet === null || fromFeet === null
     ? null
     : fromFeet + (targetFeet - fromFeet) * roundProgress;
+  drawGatlingWheelMarks(ctx, L, woman, feet);
   drawWomanBloodTrail(ctx, L, woman, s, headSide, roundProgress);
   if (woman.phase === 'inactive' || woman.phase === 'gone' || woman.slot === null || feet === null) return;
   const stride = motion && woman.phase === 'walking' ? Math.sin(t * 5.5) : 0;
 
   if (woman.phase === 'dead') {
-    drawDeadWoman(ctx, L.midX, feet, s, headSide);
+    const fall = crush?.fall ?? 1;
+    if (fall < 1) {
+      ctx.save(); ctx.translate(L.midX - headSide * 35 * s * fall, feet);
+      ctx.rotate(headSide * fall * Math.PI / 2); ctx.globalAlpha *= 1 - fall;
+      drawAliveWoman(ctx, s, 0); ctx.restore();
+    }
+    ctx.save(); ctx.globalAlpha *= fall;
+    drawDeadWoman(ctx, L.midX, feet, s, headSide, crush?.compression ?? !!woman.crushedByGatling);
+    ctx.restore();
+    if (crush && crush.dust > 0) {
+      ctx.save();
+      for (let i = 0; i < 9; i++) {
+        const drift = 1 - crush.dust, side = i % 2 ? 1 : -1;
+        ctx.globalAlpha = crush.dust * (0.12 + rand(i * 17) * 0.13);
+        ctx.fillStyle = '#c4a273'; ctx.beginPath();
+        ctx.ellipse(L.midX + side * (25 + drift * (30 + i * 3)) * s, feet - (5 + drift * 15) * s,
+          (7 + drift * 13) * s, (3 + drift * 7) * s, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
     return;
   }
 
@@ -177,7 +199,7 @@ export function drawBarrel(ctx: CanvasRenderingContext2D, L: Layout, x: number, 
   if (!barrel) return;
   const s = L.s;
   const h = barrelHeight(L);
-  const w = 62 * s;
+  const w = 74 * s;
   const hp = barrel.hp;
   ctx.save();
   ctx.translate(x, feetY);

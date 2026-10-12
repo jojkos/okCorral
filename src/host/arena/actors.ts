@@ -1,5 +1,6 @@
 import type { ActionType, Barrel, Player } from '../../../shared/types';
 import { COL, drawCowboy, roundRect } from '../../lib/cowboyDraw';
+import { cowboyCoverDrop } from '../../lib/cowboyPose';
 import { drawWoodPanel } from './panels';
 import { FONT, Layout, TEAM_COL, barrelHeight, barrelX, clamp01, easeInOutQuad, easeOutBack, easeOutCubic, facingOf, nameSeed, teamX } from './layout';
 
@@ -81,10 +82,10 @@ export function drawActor(ctx: CanvasRenderingContext2D, L: Layout, p: Player, f
   // Fall backwards (away from the street), pivoting at the boots.
   ctx.rotate(-facing * fall * (Math.PI / 2 - 0.3));
   ctx.translate(0, fall * 4 * s);
-  // Crouch: squash toward the boards.
-  ctx.scale(s, s * (1 - f.cover * 0.3));
+  // Keep all artwork at the same size. Knees and hips articulate inside the rig.
+  ctx.scale(s, s);
   ctx.translate(0, -63);
-  drawCowboy(ctx, p.team, facing, motion ? t : 0, nameSeed(p.name), { ...pose, hat: !anim.hatGone });
+  drawCowboy(ctx, p.team, facing, motion ? t : 0, nameSeed(p.name), { ...pose, cover: f.cover, hat: !anim.hatGone });
   ctx.restore();
 }
 
@@ -267,5 +268,5 @@ export function drawCoverTag(ctx: CanvasRenderingContext2D, L: Layout, x: number
   ctx.restore();
 }
 
-export const headY = (L: Layout, f: ActorFrame) => f.feet - 128 * L.s * (1 - f.cover * 0.3) - 26 * L.s;
+export const headY = (L: Layout, f: ActorFrame) => f.feet - (128 - cowboyCoverDrop(f.cover)) * L.s - 26 * L.s;
 export { COL };

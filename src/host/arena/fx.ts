@@ -1,4 +1,5 @@
 import type { Bullet, Team } from '../../../shared/types';
+import { flightPoint, type ShotFlight } from '../../../shared/ballistics';
 import { drawHat, roundRect } from '../../lib/cowboyDraw';
 import { CANVAS_W, FONT, TEAM_COL, easeOutBack, clamp01 } from './layout';
 
@@ -53,7 +54,7 @@ export class ParticleSystem {
 }
 
 export interface Muzzle { x: number; y: number; t: number; life: number; dir: number }
-export interface BulletAnim { id: string; fromX: number; fromY: number; controlX: number; controlY: number; toX: number; toY: number; bornAt: number; dur: number; team: Team; hit: Bullet['hit'] }
+export interface BulletAnim extends ShotFlight { id: string; bornAt: number; dur: number; team: Team; hit: Bullet['hit']; source?: Bullet['source'] }
 export interface Impact { x: number; y: number; t: number; kind: 'player' | 'barrel' | 'bullet' | 'woman'; lethal?: boolean }
 export interface Floater { x: number; y: number; text: string; t: number; color: string; size: number; life: number }
 export interface Banner { text: string; sub?: string; t: number; life: number; color: string; size: number; y: number }
@@ -90,18 +91,14 @@ export function drawBullets(ctx: CanvasRenderingContext2D, list: BulletAnim[], t
     const k = (t - b.bornAt) / b.dur;
     if (k > 1) { list.splice(i, 1); continue; }
     if (k < 0) continue;
-    const inv = 1 - k;
-    const x = inv * inv * b.fromX + 2 * inv * k * b.controlX + k * k * b.toX;
-    const y = inv * inv * b.fromY + 2 * inv * k * b.controlY + k * k * b.toY;
-    const dx = 2 * inv * (b.controlX - b.fromX) + 2 * k * (b.toX - b.controlX);
-    const dy = 2 * inv * (b.controlY - b.fromY) + 2 * k * (b.toY - b.controlY);
+    const { x, y, dx, dy } = flightPoint(b, k);
     const angle = Math.atan2(dy, dx);
     ctx.save();
     ctx.translate(x, y); ctx.rotate(angle);
     const trail = 140;
     const tg = ctx.createLinearGradient(-trail, 0, 0, 0);
     tg.addColorStop(0, 'rgba(255,220,120,0)');
-    tg.addColorStop(1, b.team === 'sheriffs' ? 'rgba(190,255,245,0.95)' : 'rgba(255,215,170,0.95)');
+    tg.addColorStop(1, b.source === 'gatling' ? 'rgba(255,238,145,0.98)' : b.team === 'sheriffs' ? 'rgba(190,255,245,0.95)' : 'rgba(255,215,170,0.95)');
     ctx.fillStyle = tg; ctx.fillRect(-trail, -2.5, trail, 5);
     ctx.fillStyle = '#fffbe8';
     ctx.beginPath(); ctx.ellipse(0, 0, 7, 3.5, 0, 0, Math.PI * 2); ctx.fill();

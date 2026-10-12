@@ -14,9 +14,9 @@ export function useGameState() {
     return () => { socket.off('gameState', update); socket.off('tickEnd', end); };
   }, []);
   useEffect(() => {
-    if (state?.phase !== 'resolution') return;
+    if (state?.phase !== 'resolution' && !(state?.phase === 'planning' && state.walkingWoman.gatlingCrush)) return;
     const timer = setInterval(() => setNow(serverNow()), 16);
     return () => clearInterval(timer);
-  }, [state?.phase, state?.resolutionStartedAt]);
+  }, [state?.phase, state?.resolutionStartedAt, state?.tickStartTime, state?.walkingWoman.gatlingCrush]);
   return state ? presentState(state, now) : null;
 }

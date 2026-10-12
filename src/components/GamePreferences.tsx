@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Volume2, VolumeX, Wind, WifiOff, X } from 'lucide-react';
-import { getAudioPreferences, isMuted, setAudioPreferences, setMuted, type AudioPreferences } from '../sound';
+import { getAudioPreferences, getMusicStatus, isMuted, retryMusic, setAudioPreferences, setMuted, subscribeMusicStatus, WESTERN_TRACK, type AudioPreferences } from '../sound';
 import { socket } from '../socket';
 import './audioPreferences.css';
 export function reducedMotion() { return document.documentElement.dataset.motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches; }
 export default function GamePreferences() {
   const [muted, mute] = useState(isMuted);
   const [audio, updateAudio] = useState(getAudioPreferences);
+  const musicStatus = useSyncExternalStore(subscribeMusicStatus, getMusicStatus, getMusicStatus);
   const [open, setOpen] = useState(false);
   const [reduced, reduce] = useState(() => localStorage.getItem('okCorral-motion') === 'reduced');
   const [offline, setOffline] = useState(false);
@@ -39,6 +40,12 @@ export default function GamePreferences() {
           <legend>{title}</legend>
           <label className="audio-toggle"><input type="checkbox" checked={enabled} onChange={e => update({ [`${kind}Enabled`]: e.target.checked })} />{title} on</label>
           <div className="audio-level"><input aria-label={`${title} volume`} type="range" min="0" max="100" step="5" value={Math.round(volume * 100)} disabled={!enabled} onChange={e => update({ [`${kind}Volume`]: Number(e.target.value) / 100 })} /><output>{Math.round(volume * 100)}%</output></div>
+          {kind === 'music' && <div className="audio-track">
+            <strong>{WESTERN_TRACK.title}</strong>
+            <span>Original western soundtrack · Runway</span>
+            {musicStatus === 'loading' && <span role="status">Loading soundtrack…</span>}
+            {musicStatus === 'error' && <span role="alert">Music couldn't load. <button type="button" onClick={retryMusic}>Try again</button></span>}
+          </div>}
         </fieldset>;
       })}
     </div>}

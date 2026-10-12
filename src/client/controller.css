@@ -149,6 +149,9 @@
 .ctl-event-warning { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid #f58b7899; border-radius: 8px; background: #641f1ccc; color: #ffd2c7; font-size: 12px; line-height: 1.25; }
 .ctl-event-warning svg { flex: none; color: #ff9b7a; }
 .ctl-event-warning strong { display: block; color: #fff0e8; font-size: 13px; }
+.ctl-rain { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid #7babad66; border-radius: 8px; background: #243d47cc; color: #c7dedd; font-size: 12px; line-height: 1.3; }
+.ctl-rain svg { flex: none; color: #a7ced3; }
+.ctl-rain strong { display: block; color: #e1edef; font-size: 13px; }
 
 /* ───────── Action tiles ───────── */
 .ctl-grid {

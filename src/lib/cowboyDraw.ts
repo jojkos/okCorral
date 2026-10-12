@@ -368,81 +368,90 @@ export function drawCowboy(c: Canvas, team: Team, facing: 1 | -1, time: number, 
     reload = pose.reload || 0,
     suicide = pose.suicide || 0;
   const breath = Math.sin(time * 2 + seed) * 0.8;
+  const cover = Math.max(0, Math.min(1, pose.cover ?? 0));
   c.save();
   c.lineCap = 'round';
   c.lineJoin = 'round';
   c.scale(facing * 0.95, 0.95);
-  c.translate(-recoil * 6, breath - Math.abs(walk) * 3);
+  c.translate(-recoil * 6, breath - Math.abs(walk) * 3 + cover * 14);
   for (const [x, step, back] of [
     [-13, walk, true],
     [13, -walk, false],
   ] as const) {
     c.save();
     c.translate(x, 24);
-    c.rotate(step * 0.26);
-    curve(
-      c,
-      (p) => {
-        p.moveTo(-5, 0);
-        p.lineTo(6, 0);
-        p.lineTo(5, 31);
-        p.lineTo(-5, 31);
-        p.closePath();
-      },
-      back ? '#29353b' : '#34424a',
-    );
-    curve(
-      c,
-      (p) => {
-        p.moveTo(-3, 4);
-        p.lineTo(-3.5, 24);
-      },
-      null,
-      back ? '#3b4b53' : '#52636b',
-      0.9,
-    );
-    curve(
-      c,
-      (p) => {
-        p.moveTo(-6, 26);
-        p.quadraticCurveTo(0, 28, 6, 26);
-        p.lineTo(6, 34);
-        p.quadraticCurveTo(7, 38, 12, 39);
-        p.quadraticCurveTo(15, 40, 14, 42);
-        p.lineTo(2, 43);
-        p.lineTo(-7, 42);
-        p.closePath();
-      },
-      back ? '#253139' : '#35424a',
-      '#19282f',
-      0.65,
-    );
-    curve(
-      c,
-      (p) => {
-        p.moveTo(-5, 29);
-        p.lineTo(-5, 37);
-        p.quadraticCurveTo(-2, 38, 1, 37);
-      },
-      null,
-      '#6b7067',
-      0.7,
-    );
-    curve(
-      c,
-      (p) => {
-        p.moveTo(6, 38);
-        p.quadraticCurveTo(10, 38.8, 13, 40);
-      },
-      null,
-      '#6f7b7d',
-      0.8,
-    );
-    c.fillStyle = '#ac8459';
-    roundRect(c, -7, 42, 21, 1.8, 0.5);
-    c.fill();
-    c.fillStyle = '#17272e';
-    c.fillRect(-6.5, 43.5, 5, 1.4);
+    const thigh = step * 0.26 * (1 - cover) + (back ? 0.85 : -1.1) * cover;
+    const shin = step * 0.26 * (1 - cover) + (back ? 1.55 : 0.08) * cover;
+    c.rotate(thigh);
+    for (const lower of [false, true]) {
+      c.save();
+      if (lower) { c.translate(0, 26); c.rotate(shin - thigh); c.translate(0, -26); }
+      c.beginPath(); c.rect(-100, lower ? 24 : -100, 200, lower ? 200 : 128); c.clip();
+      curve(
+        c,
+        (p) => {
+          p.moveTo(-5, 0);
+          p.lineTo(6, 0);
+          p.lineTo(5, 31);
+          p.lineTo(-5, 31);
+          p.closePath();
+        },
+        back ? '#29353b' : '#34424a',
+      );
+      curve(
+        c,
+        (p) => {
+          p.moveTo(-3, 4);
+          p.lineTo(-3.5, 24);
+        },
+        null,
+        back ? '#3b4b53' : '#52636b',
+        0.9,
+      );
+      curve(
+        c,
+        (p) => {
+          p.moveTo(-6, 26);
+          p.quadraticCurveTo(0, 28, 6, 26);
+          p.lineTo(6, 34);
+          p.quadraticCurveTo(7, 38, 12, 39);
+          p.quadraticCurveTo(15, 40, 14, 42);
+          p.lineTo(2, 43);
+          p.lineTo(-7, 42);
+          p.closePath();
+        },
+        back ? '#253139' : '#35424a',
+        '#19282f',
+        0.65,
+      );
+      curve(
+        c,
+        (p) => {
+          p.moveTo(-5, 29);
+          p.lineTo(-5, 37);
+          p.quadraticCurveTo(-2, 38, 1, 37);
+        },
+        null,
+        '#6b7067',
+        0.7,
+      );
+      curve(
+        c,
+        (p) => {
+          p.moveTo(6, 38);
+          p.quadraticCurveTo(10, 38.8, 13, 40);
+        },
+        null,
+        '#6f7b7d',
+        0.8,
+      );
+      c.fillStyle = '#ac8459';
+      roundRect(c, -7, 42, 21, 1.8, 0.5);
+      c.fill();
+      c.fillStyle = '#17272e';
+      c.fillRect(-6.5, 43.5, 5, 1.4);
+      c.restore();
+    }
     c.restore();
   }
   // Continuous coat silhouette with layered lapels, seam lines and pockets.

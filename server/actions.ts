@@ -5,6 +5,13 @@ import type {
   ActionType,
   Team,
 } from "../shared/types.js";
+import { shotPath } from '../shared/shooting.js';
+import { shotCivilianHit } from '../shared/ballistics.js';
+import { runOverWomanWithGatling } from './randomEvents.js';
+import { resolveSwallowHits } from './rain.js';
+import { resolvedBulletFlight } from '../shared/bulletFlight.js';
+import { rand } from '../shared/random.js';
+import { VOLLEY } from '../shared/volley.js';
 
 interface ActionResult {
   state: GameState;
@@ -143,49 +150,29 @@ export function resolveActions(state: GameState): ActionResult {
     if (!player.isAlive || player.slot < 0) return;
     if (player.ammo <= 0) return;
 
-    let aimedSlot = -1;
-    let trajectory: "straight" | "up" | "down" = "straight";
-
-    if (player.currentAction === "SHOOT_STRAIGHT") {
-      aimedSlot = player.slot;
-      trajectory = "straight";
-    } else if (player.currentAction === "SHOOT_UP") {
-      aimedSlot = player.slot - 1;
-      trajectory = "up";
-    } else if (player.currentAction === "SHOOT_DOWN") {
-      aimedSlot = player.slot + 1;
-      trajectory = "down";
-    }
-
-    // Preserve the existing rule that an intrinsically off-board aim does not
-    // fire. Once a legal shot is fired, active wind shifts its actual target;
-    // a wind-blown shot still spends ammo even when that final target is out.
-    if (aimedSlot >= 0 && aimedSlot < newState.config.slotsPerSide) {
-      const windOffset = newState.strongWind.phase === "active"
-        ? (newState.strongWind.direction === "up" ? -1 : 1)
-        : 0;
-      const targetSlot = aimedSlot + windOffset;
+    const path = shotPath(player.slot, player.currentAction, newState.strongWind, newState.config.slotsPerSide);
+    if (path) {
       player.ammo--;
       pendingBullets.push({
         id: `bullet-${++bulletIdCounter}`,
         shooter: player,
-        aimedSlot,
-        targetSlot,
-        trajectory,
-        offBoard: targetSlot < 0 || targetSlot >= newState.config.slotsPerSide,
+        aimedSlot: path.aimedSlot,
+        targetSlot: path.targetSlot,
+        trajectory: path.trajectory,
+        offBoard: path.offBoard,
       });
     }
   });
 
-  // The bystander stands in the middle of the street and intercepts every
-  // simultaneous shot ending in her lane before bullets can reach each other
-  // or the opposing boardwalk.
+  // Intersect the actual curved flight, including shots destined off-board.
+  // All simultaneous shots see the same standing civilian before she falls.
   const womanSlot = newState.walkingWoman.phase === "walking"
     ? newState.walkingWoman.slot
     : null;
-  const womanBullets = womanSlot === null
-    ? []
-    : pendingBullets.filter((b) => !b.offBoard && b.targetSlot === womanSlot);
+  const womanHits = new Map(pendingBullets.map(b => [b.id, shotCivilianHit(
+    newState.config.slotsPerSide, b.shooter.team, b.shooter.slot, b, newState.walkingWoman,
+  )]));
+  const womanBullets = pendingBullets.filter(b => womanHits.get(b.id) != null);
   const womanBulletIds = new Set(womanBullets.map((b) => b.id));
   if (womanBullets.length) {
     newState.walkingWoman.phase = "dead";
@@ -201,6 +188,7 @@ export function resolveActions(state: GameState): ActionResult {
         toSlot: bullet.targetSlot,
         trajectory: bullet.trajectory,
         hit: "woman",
+        civilianHitT: womanHits.get(bullet.id)!,
         shooterId: bullet.shooter.id,
       });
       if (!newState.pendingSuicides.some((p) => p.playerId === bullet.shooter.id)) {
@@ -320,5 +308,59 @@ export function resolveActions(state: GameState): ActionResult {
     }
   });
 
+  // The gatling gunman fires from the middle of the street after the regular
+  // volley. Each of his eight pre-rolled shots points at a valid board space;
+  // empty spaces miss, while cover and barrels obey the normal damage rules.
+  if (newState.gatlingMan.phase === "active") {
+    newState.gatlingMan.targets.forEach((target, index) => {
+      const targetPlayer = newState.players.find(
+        (p) => p.team === target.team && p.slot === target.slot && p.isAlive,
+      );
+      const base = {
+        id: `gatling-${newState.tick}-${index + 1}`,
+        fromTeam: (target.team === "sheriffs" ? "outlaws" : "sheriffs") as Team,
+        fromSlot: target.slot,
+        aimedSlot: target.slot,
+        toSlot: target.slot,
+        trajectory: "straight" as const,
+        source: "gatling" as const,
+        targetTeam: target.team,
+      };
+
+      if (!targetPlayer) {
+        bullets.push({ ...base, hit: "miss" });
+        return;
+      }
+
+      const targetBarrel = newState.barrels.find(
+        (b) => b.team === target.team && b.slot === target.slot,
+      );
+      if (targetPlayer.isCovered && targetBarrel && targetBarrel.hp > 0) {
+        targetBarrel.hp--;
+        bullets.push({ ...base, hit: "barrel", targetId: targetPlayer.id });
+        return;
+      }
+
+      const wasAlive = targetPlayer.hp > 0;
+      targetPlayer.hp--;
+      if (targetPlayer.hp <= 0) targetPlayer.isAlive = false;
+      bullets.push({
+        ...base,
+        hit: "player",
+        targetId: targetPlayer.id,
+        lethal: wasAlive && targetPlayer.hp <= 0,
+      });
+    });
+  }
+
+  // The departure follows the volley: a survivor can be run over, but a player
+  // who shot her first still receives the normal civilian-shot consequence.
+  newState.walkingWoman = runOverWomanWithGatling(newState.walkingWoman, newState.gatlingMan, newState.config.slotsPerSide, 'departure');
+  let gatlingShot = 0;
+  bullets.forEach((b, i) => {
+    b.flight = resolvedBulletFlight(newState, b);
+    b.firedAt = VOLLEY.move + (b.source === 'gatling' ? gatlingShot++ * 42 : Math.floor(rand(i * 31 + state.tick) * 60));
+  });
+  resolveSwallowHits(newState, bullets);
   return { state: newState, bullets };
 }

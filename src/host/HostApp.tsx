@@ -6,7 +6,7 @@ import Arena from './Arena';
 import EndScreen from './EndScreen';
 import HostMenu from './components/HostMenu';
 import './host.css';
-import { startAmbient, stopAmbient, playVictory, playDefeat } from '../sound';
+import { startAmbient, stopAmbient, playVictory, playDefeat, syncMusicRound } from '../sound';
 
 const DEFAULT_CONFIG = { tickDuration: 4000, slotsPerSide: 5 };
 const KEY = 'okCorral-hostSession';
@@ -57,6 +57,10 @@ export default function HostApp() {
     }
     previousPhase.current = phase;
   }, [gameState?.phase, gameState?.winner]);
+  useEffect(() => {
+    if (gameState?.phase !== 'planning' || gameState.tickStartTime == null) return;
+    syncMusicRound(gameState.config.tickDuration);
+  }, [gameState?.phase, gameState?.tick, gameState?.tickStartTime, gameState?.config.tickDuration]);
   useEffect(() => () => stopAmbient(), []);
   const screen = gameState?.phase === 'ended' ? <EndScreen gameState={gameState} />
     : gameState && gameState.phase !== 'lobby' ? <Arena gameState={gameState} />

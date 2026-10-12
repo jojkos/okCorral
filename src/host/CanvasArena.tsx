@@ -1,12 +1,16 @@
 import { useEffect, useRef } from 'react';
 import type { Bullet, GameState, Player, Team, Emote } from '../../shared/types';
+import { playerShotCurve, type ShotFlight } from '../../shared/ballistics';
+import { resolvedBulletFlight } from '../../shared/bulletFlight';
 import { socket, serverNow } from '../socket';
 import { VOLLEY } from '../lib/presentation';
 import { roundHeadline } from '../lib/recap';
 import { reducedMotion } from '../components/GamePreferences';
 import * as sound from '../sound';
-import { BADGE_MIN_Y, CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, barrelX, bulletLaneFeet, clamp01, facingOf, gunHeight, rand, slotLayout, teamX } from './arena/layout';
+import { BADGE_MIN_Y, CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, barrelX, bulletLaneFeet, clamp01, facingOf, rand, slotLayout, teamX } from './arena/layout';
 import { drawBackground, drawBarrel, drawStrongWindWeather, drawVignette, drawWalkingWoman } from './arena/scene';
+import { drawGatlingMan, gatlingTravel, gatlingWomanFrame } from './arena/gatling';
+import { drawRain, drawRainGround, drawSwallows } from './arena/rain';
 import { ActorAnim, ActorFrame, actorFrame, drawActionBadge, drawActor, drawIntentMarker, drawPlate, headY } from './arena/actors';
 import { Banner, BulletAnim, EmoteFx, Floater, FlyingHat, Impact, Muzzle, ParticleSystem, drawBanners, drawBullets, drawEmotes, drawFloaters, drawHats, drawImpacts, drawMuzzles, stepHats } from './arena/fx';
 import { drawCountdown, drawHUD, drawLegend } from './arena/hud';
@@ -33,6 +37,8 @@ interface AnimState {
   t: number;
   slowUntil: number;
   slowScale: number;
+  /** Short camera punch on each gatling round; decays between shots. */
+  gatlingKick: number;
   cam: { zoom: number; x: number; y: number; tz: number; tx: number; ty: number };
   anims: Record<string, ActorAnim>;
   frames: Record<string, ActorFrame>;
@@ -47,11 +53,15 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
   const gsRef = useRef<GameState>(gameState);
   const stRef = useRef<AnimState>({
     particles: new ParticleSystem(), bullets: [], muzzles: [], impacts: [], floaters: [], banners: [], hats: [], emotes: [],
-    shake: { x: 0, y: 0, mag: 0, until: 0 }, flash: 0, t: 0, slowUntil: 0, slowScale: 1,
+    shake: { x: 0, y: 0, mag: 0, until: 0 }, flash: 0, t: 0, slowUntil: 0, slowScale: 1, gatlingKick: 0,
     cam: { zoom: 1, x: CANVAS_W / 2, y: CANVAS_H / 2, tz: 1, tx: CANVAS_W / 2, ty: CANVAS_H / 2 },
     anims: {}, frames: {}, timeLeft: 0, lastCountdown: 0, finalAt: null,
   });
   gsRef.current = gameState;
+
+  useEffect(() => {
+    if (gameState.rain?.phase === 'active') return sound.startRainSound();
+  }, [gameState.rain?.phase]);
 
   useEffect(() => {
     const img = new Image();
@@ -87,25 +97,25 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
     prevRef.current = next;
   }, [gameState.players]);
 
-  // Music gets more intense as the posse thins out.
-  useEffect(() => {
-    const seated = gameState.players.filter((p) => p.slot >= 0);
-    if (!seated.length) return;
-    const alive = (team: Team) => seated.filter((p) => p.team === team && p.isAlive).length;
-    let level = 1 - seated.filter((p) => p.isAlive).length / seated.length;
-    if (alive('sheriffs') === 1 || alive('outlaws') === 1) level = Math.max(level, 0.8);
-    cue('setMusicIntensity', Math.min(1, level + 0.15));
-  }, [gameState.players]);
-
-  // New round → stamp banner + "draw!" cue.
+  // New rounds are announced visually only; environmental sounds stay intact.
   useEffect(() => {
     if (gameState.phase !== 'planning') return;
     const st = stRef.current;
     st.lastCountdown = 4;
     st.finalAt = null;
-    st.cam.tz = 1; st.cam.tx = CANVAS_W / 2; st.cam.ty = CANVAS_H / 2;
-    st.banners.push({ text: `ROUND ${gameState.tick}`, sub: gameState.tick === 1 ? 'CHOOSE ONE ACTION ON YOUR PHONE' : undefined, t: st.t, life: 1.25, color: '#ffd875', size: 64, y: 470 });
-    if (sfx.playRoundStart) cue('playRoundStart'); else cue('playTickStart');
+    // Keep the full vertical lane stack framed. Gatling drama comes from a
+    // restrained push-in and per-shot punches, never from cropping lower rows.
+    st.cam.tz = gameState.gatlingMan.phase === 'active' ? 1.028 : 1;
+    st.cam.tx = CANVAS_W / 2; st.cam.ty = CANVAS_H / 2;
+    st.gatlingKick = 0;
+    if (gameState.gatlingMan.phase === 'warning') {
+      cue('playGatlingApproach', gameState.config.tickDuration / 1000);
+    } else if (gameState.gatlingMan.phase === 'active') {
+      cue('playGatlingArrival');
+      if (gameState.walkingWoman.crushedByGatling && gameState.walkingWoman.fromSlot !== gameState.walkingWoman.slot) cue('playGatlingCrush');
+    } else {
+      st.banners.push({ text: `ROUND ${gameState.tick}`, sub: gameState.tick === 1 ? 'CHOOSE ONE ACTION ON YOUR PHONE' : undefined, t: st.t, life: 1.25, color: '#ffd875', size: 64, y: 470 });
+    }
   }, [gameState.phase, gameState.tick]);
 
   // The showdown, choreographed on the shared server clock.
@@ -134,6 +144,12 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
     const winner: Team | 'draw' | null = !final ? null : aliveAfter('sheriffs') === 0 && aliveAfter('outlaws') === 0 ? 'draw' : aliveAfter('sheriffs') === 0 ? 'outlaws' : 'sheriffs';
 
     at(0, () => { if (sfx.playReveal) cue('playReveal'); else cue('playTickResolve'); });
+    if (gs.gatlingMan.phase === 'active') at(VOLLEY.reveal, () => {
+      cue('playGatlingSpinUp');
+      st.cam.tz = 1.04;
+      st.cam.tx = CANVAS_W / 2;
+      st.cam.ty = CANVAS_H / 2;
+    });
     at(VOLLEY.reveal, () => {
       for (const p of players) {
         const was = before.get(p.id);
@@ -144,66 +160,34 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
       }
     });
 
-    const targetPoint = (b: Bullet) => {
-      const shooter = players.find((p) => p.id === b.shooterId);
-      const team: Team = b.fromTeam;
-      const enemy: Team = team === 'sheriffs' ? 'outlaws' : 'sheriffs';
-      const sf = shooter ? st.frames[shooter.id] : undefined;
-      const dir = facingOf(team);
-      const fromX = (sf?.x ?? teamX(L, team)) + dir * 65 * L.s;
-      const fromY = (sf?.feet ?? L.feet[b.fromSlot]) - gunHeight(L);
-      const laneFeet = bulletLaneFeet(L, b.toSlot);
-      const aimedY = bulletLaneFeet(L, b.aimedSlot) - gunHeight(L);
-      let toX = teamX(L, enemy), toY = laneFeet - 72 * L.s;
-      if (b.hit === 'player') {
-        const tf = b.targetId ? st.frames[b.targetId] : undefined;
-        if (tf) { toX = tf.x; toY = tf.feet - (tf.cover > 0.5 ? 46 : 74) * L.s; }
-      } else if (b.hit === 'barrel') {
-        toX = barrelX(L, enemy) - dir * 22 * L.s; toY = laneFeet - barrelHeight(L) * 0.55;
-      } else if (b.hit === 'bullet') {
-        // Both server-side curves share this midpoint when they collide.
-        toX = L.midX;
-        toY = fromY * 0.5 + aimedY * 0.25 + (laneFeet - gunHeight(L)) * 0.25;
-        return {
-          fromX, fromY,
-          controlX: (fromX + toX) / 2,
-          controlY: fromY * 0.75 + aimedY * 0.25,
-          toX, toY,
-        };
-      } else if (b.hit === 'woman') {
-        const womanScale = Math.max(0.62, L.s * 0.92);
-        toX = L.midX; toY = laneFeet - 139 * womanScale;
-      } else {
-        const edge = dir > 0 ? CANVAS_W + 60 : -60;
-        const k = (edge - fromX) / (toX - fromX);
-        toY = fromY + (toY - fromY) * k; toX = edge;
-      }
-      return {
-        fromX, fromY,
-        controlX: (fromX + toX) / 2,
-        controlY: (fromY + aimedY) / 2,
-        toX, toY,
-      };
-    };
+    const targetPoint = (b: Bullet): ShotFlight => b.flight ?? resolvedBulletFlight(gs, b);
 
+    let gatlingShot = 0;
     bullets.forEach((b, i) => {
-      const stagger = (rand(i * 31 + gs.tick) * 60) | 0;
+      const stagger = b.firedAt != null ? b.firedAt - VOLLEY.move : b.source === 'gatling' ? gatlingShot++ * 42 : (rand(i * 31 + gs.tick) * 60) | 0;
       let geo: ReturnType<typeof targetPoint> | null = null;
       at(VOLLEY.move + stagger, () => {
         geo = targetPoint(b);
-        const dir = facingOf(b.fromTeam);
-        cue('playGunshot', pan(b.fromTeam));
+        const dir = b.source === 'gatling' ? (b.targetTeam === 'outlaws' ? 1 : -1) : facingOf(b.fromTeam);
+        cue(b.source === 'gatling' ? 'playGatlingShot' : 'playGunshot', b.source === 'gatling' ? (b.targetTeam === 'sheriffs' ? -0.35 : 0.35) : pan(b.fromTeam));
         st.muzzles.push({ x: geo.fromX, y: geo.fromY, t: st.t, life: 0.12, dir });
         if (!reducedMotion()) {
           for (let k = 0; k < 8; k++) st.particles.add({ kind: 'smoke', x: geo.fromX + dir * 20, y: geo.fromY, vx: dir * (40 + Math.random() * 70), vy: -30 - Math.random() * 30, drag: 1.2, size: 6 + Math.random() * 6, life: 1.4 + Math.random() * 0.6, age: 0, color: '#d8ccb4' });
           for (let k = 0; k < 6; k++) st.particles.add({ kind: 'streak', x: geo.fromX + dir * 24, y: geo.fromY, vx: dir * (300 + Math.random() * 300), vy: (Math.random() - 0.5) * 160, drag: 4, size: 2.5, life: 0.18, age: 0, color: '#ffe1a4', fade: true });
         }
-        st.bullets.push({ id: b.id, ...geo, bornAt: st.t, dur: Math.max(0.12, (VOLLEY.impact - VOLLEY.move - stagger) / 1000), team: b.fromTeam, hit: b.hit });
-        st.shake.mag = Math.max(st.shake.mag, 3); st.shake.until = st.t + 0.12;
+        st.bullets.push({ id: b.id, ...geo, bornAt: st.t, dur: Math.max(0.08, (VOLLEY.impact - VOLLEY.move - stagger) / 1000), team: b.fromTeam, hit: b.hit, source: b.source });
+        if (b.source === 'gatling') {
+          st.gatlingKick = 1;
+          st.shake.mag = Math.max(st.shake.mag, 6);
+          st.shake.until = st.t + 0.16;
+        } else {
+          st.shake.mag = Math.max(st.shake.mag, 3);
+          st.shake.until = st.t + 0.12;
+        }
       });
       at(VOLLEY.impact, () => {
         const g = geo ?? targetPoint(b);
-        const p = b.fromTeam === 'sheriffs' ? 0.65 : -0.65;
+        const p = b.source === 'gatling' ? (b.targetTeam === 'sheriffs' ? -0.45 : 0.45) : b.fromTeam === 'sheriffs' ? 0.65 : -0.65;
         if (final && b.lethal) cue('playFinalShot');
         cue('playBulletImpact', b.hit, p);
         if (b.lethal && !final) cue('playKillSting');
@@ -357,6 +341,7 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
       if (!motion) { c.tz = 1; c.tx = CANVAS_W / 2; c.ty = CANVAS_H / 2; }
       const ease = 1 - Math.pow(0.02, real);
       c.zoom += (c.tz - c.zoom) * ease; c.x += (c.tx - c.x) * ease; c.y += (c.ty - c.y) * ease;
+      st.gatlingKick *= Math.pow(0.0005, real);
       st.flash = Math.max(0, st.flash - real * 2.2);
 
       draw(ctx, gs, st, bgRef.current, motion);
@@ -383,20 +368,40 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
   const elapsed = gs.phase === 'resolution' && gs.resolutionStartedAt ? serverNow() - gs.resolutionStartedAt : -1;
   const before = new Map((gs.resolutionFrom?.players ?? []).map((p) => [p.id, p]));
   const seated = gs.players.filter((p) => p.slot >= 0);
+  const roundProgress = gs.phase === 'planning' && gs.tickStartTime
+    ? clamp01((serverNow() - gs.tickStartTime) / gs.config.tickDuration)
+    : 1;
 
   ctx.save();
   ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
   // Camera: shake + slow-mo zoom (scene only; HUD stays put).
-  ctx.translate(CANVAS_W / 2 + st.shake.x, CANVAS_H / 2 + st.shake.y);
-  ctx.scale(st.cam.zoom, st.cam.zoom);
+  const gatlingZoom = gs.gatlingMan.phase === 'active' && motion ? st.gatlingKick * 0.012 : 0;
+  // 1.052 is the safe 16:9 limit: the lowest lane remains visible even at
+  // peak recoil and camera shake.
+  const sceneZoom = gs.gatlingMan.phase === 'active' ? Math.min(1.052, st.cam.zoom + gatlingZoom) : st.cam.zoom;
+  const warningPulse = gs.gatlingMan.phase === 'warning' && motion
+    ? (1.2 + roundProgress * 5.3) * (0.35 + Math.max(0, Math.sin(st.t * 8.5)) * 0.65)
+    : 0;
+  const earthX = warningPulse ? Math.sin(st.t * 27) * warningPulse * 0.42 : 0;
+  const earthY = warningPulse ? Math.sin(st.t * 19 + 0.8) * warningPulse * 0.72 : 0;
+  ctx.translate(CANVAS_W / 2 + st.shake.x + earthX, CANVAS_H / 2 + st.shake.y + earthY);
+  ctx.scale(sceneZoom, sceneZoom);
   ctx.translate(-st.cam.x, -st.cam.y);
 
   drawBackground(ctx, bg, st.t);
+  drawRainGround(ctx, gs, st.t, motion);
+  drawSwallows(ctx, gs, serverNow(), roundProgress, elapsed, motion, 'ground');
   drawStrongWindWeather(ctx, L, gs.strongWind, st.t, motion);
-  const roundProgress = gs.phase === 'planning' && gs.tickStartTime
-    ? clamp01((serverNow() - gs.tickStartTime) / gs.config.tickDuration)
-    : 1;
-  drawWalkingWoman(ctx, L, gs.walkingWoman, st.t, motion, roundProgress);
+  const gatlingTarget = gs.gatlingMan.phase !== 'active' || !gs.gatlingMan.targets.length ? null
+    : gs.gatlingMan.targets[Math.max(0, Math.min(gs.gatlingMan.targets.length - 1,
+      elapsed >= VOLLEY.move ? Math.floor((elapsed - VOLLEY.move) / 42) : Math.floor(st.t * 1.5) % gs.gatlingMan.targets.length))];
+  const civilian = gatlingWomanFrame(L, gs.walkingWoman, gs.gatlingMan, roundProgress, elapsed, motion, gs.config.tickDuration);
+  const drawCart = () => drawGatlingMan(ctx, L, gs.gatlingMan, st.t, motion, gatlingTarget, roundProgress, elapsed >= VOLLEY.reveal && elapsed <= VOLLEY.impact, elapsed, civilian.crush?.bump ?? 0);
+  const drawCivilian = () => drawWalkingWoman(ctx, L, civilian.woman, st.t, motion, civilian.progress, civilian.crush);
+  const womanFeet = civilian.woman.slot === null ? -Infinity : bulletLaneFeet(L, civilian.woman.fromSlot ?? civilian.woman.slot)
+    + (civilian.woman.slot - (civilian.woman.fromSlot ?? civilian.woman.slot)) * L.slotHeight * civilian.progress;
+  if (!civilian.crush && gatlingTravel(roundProgress, elapsed, motion).y < womanFeet) { drawCart(); drawCivilian(); }
+  else { drawCivilian(); drawCart(); }
 
   // Compute every actor's frame first (positions are needed for bullets/emotes).
   for (const p of seated) {
@@ -444,16 +449,13 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
     for (const b of gs.lastTickBullets) {
       const sf = b.shooterId ? st.frames[b.shooterId] : undefined;
       if (!sf) continue;
-      const enemy: Team = b.fromTeam === 'sheriffs' ? 'outlaws' : 'sheriffs';
-      const dir = facingOf(b.fromTeam);
-      const x1 = sf.x + dir * 65 * L.s, y1 = sf.feet - gunHeight(L);
-      const x2 = teamX(L, enemy), y2 = bulletLaneFeet(L, b.toSlot) - gunHeight(L);
-      const aimY = bulletLaneFeet(L, b.aimedSlot) - gunHeight(L);
+      const curve = playerShotCurve(L, b.fromTeam, b.fromSlot, b.aimedSlot, b.toSlot);
+      const {fromX: x1, fromY: y1, toX: x2, toY: y2} = curve;
       ctx.save();
       ctx.globalAlpha = 0.85 * fade;
       ctx.strokeStyle = TEAM_COL[b.fromTeam].main; ctx.lineWidth = 3; ctx.setLineDash([12, 10]);
       ctx.lineDashOffset = -st.t * 60;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo((x1 + x2) / 2, (y1 + aimY) / 2, x2, y2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(curve.controlX, curve.controlY, x2, y2); ctx.stroke();
       ctx.setLineDash([]);
       // Crosshair on the targeted lane
       ctx.lineWidth = 3; ctx.strokeStyle = '#ff6a55';
@@ -464,9 +466,11 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
   }
 
   drawMuzzles(ctx, st.muzzles, st.t);
+  drawSwallows(ctx, gs, serverNow(), roundProgress, elapsed, motion, 'air');
   if (motion) st.particles.draw(ctx);
   drawBullets(ctx, st.bullets, st.t);
   drawImpacts(ctx, st.impacts, st.t);
+  drawRain(ctx, gs, st.t, motion);
 
   // Plates, then intent markers / action badges above heads.
   for (const p of seated) {

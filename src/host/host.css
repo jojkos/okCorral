@@ -566,6 +566,33 @@
 }
 .hl-howto__text em { font-style: normal; font-weight: 700; color: var(--outlaw-ink); }
 
+/* Host-only event switches: compact enough for the TV lobby, with explicit
+   ON/OFF labels as well as colour and keyboard-accessible switch semantics. */
+.hl-events { padding: calc(var(--u) * 0.65) calc(var(--u) * 0.85); border: 1px solid #8a704a80; border-radius: 7px; background: linear-gradient(140deg, #302a20e8, #1b272be8); }
+.hl-events__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: calc(var(--u) * 0.5); }
+.hl-events__head h2 { margin: 0; color: var(--gold); font-family: var(--rye); font-size: calc(var(--u) * 1.2); font-weight: normal; }
+.hl-events__head > span { font-family: var(--mono); font-size: calc(var(--u) * 0.75); color: var(--muted); }
+.hl-events__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: calc(var(--u) * 0.65); }
+.hl-event { display: flex; align-items: center; gap: calc(var(--u) * 0.6); min-height: 52px; padding: calc(var(--u) * 0.65); border: 1px solid #776b5880; border-radius: 5px; background: #191b1baa; color: #b8aea0; text-align: left; cursor: pointer; transition: background 120ms, border-color 120ms; }
+.hl-event--on { background: #30505480; border-color: #73aaa099; color: var(--cream); }
+.hl-event:hover:not(:disabled) { border-color: var(--gold); background: #4b493799; }
+.hl-event:focus-visible { outline: 3px solid var(--gold-hi); outline-offset: 3px; }
+.hl-event:disabled { cursor: not-allowed; opacity: 0.5; }
+.hl-event__icon { flex: none; width: calc(var(--u) * 1.5); height: calc(var(--u) * 1.5); }
+.hl-event--on .hl-event__icon { color: #95c5bb; }
+.hl-event__copy { flex: 1; min-width: 0; }
+.hl-event__copy strong { display: block; font-family: var(--mono); font-size: calc(var(--u) * 0.95); line-height: 1.3; }
+.hl-event__copy small { display: block; margin-top: 3px; font-size: calc(var(--u) * 0.84); line-height: 1.2; opacity: 0.8; }
+.hl-event__state { flex: none; display: grid; justify-items: center; gap: 3px; }
+.hl-event__state i { display: block; width: 30px; height: 17px; padding: 3px; border-radius: 10px; background: #746c60; }
+.hl-event__state i::after { content: ''; display: block; width: 11px; height: 11px; border-radius: 50%; background: #ece0c8; transition: transform 120ms; }
+.hl-event--on .hl-event__state i { background: #549d8b; }
+.hl-event--on .hl-event__state i::after { transform: translateX(13px); }
+.hl-event__state b { font: 700 9px var(--mono); letter-spacing: 1px; }
+@media (max-width: 900px) { .hl-events__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .hl-events__head { flex-direction: column; gap: 4px; } .hl-events__grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .hl-event, .hl-event__state i::after { transition: none; } }
+
 /* In the saloon (unassigned) */
 .hl-saloon {
   display: flex;
@@ -682,6 +709,18 @@
 .hl--dense .hl-slot__name { font-size: calc(var(--u) * 1.15); }
 
 /* Lobby breakpoints */
+@media (min-width: 1101px) {
+  /* Leave room for the event switches without pushing Start below a TV screen. */
+  .hl { gap: calc(var(--u) * 0.75); padding-top: calc(var(--u) * 0.9); padding-bottom: calc(var(--u) * 0.9); }
+  .hl-slot { flex-basis: calc(var(--u) * 2.7); }
+  .hl-howto { padding: calc(var(--u) * 0.8) calc(var(--u) * 1.1); }
+  .hl-howto__title { font-size: calc(var(--u) * 1.85); }
+  .hl-howto__sub { letter-spacing: 0.08em; }
+  .hl-howto__text { font-size: calc(var(--u) * 1.02); }
+  .hl--dense .hl-slot { flex-basis: calc(var(--u) * 2.1); min-height: calc(var(--u) * 1.9); }
+  .hl--dense .hl-team__slots { gap: calc(var(--u) * 0.08); }
+  .hl--dense .hl-slot__avatar { --a: calc(var(--u) * 1.85); }
+}
 @media (max-width: 1100px) {
   .host-screen { --u: max(13px, min(1.3vw, 1.778vh)); }
   .hl-head { grid-template-columns: 1fr auto; }

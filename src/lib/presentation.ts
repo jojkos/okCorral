@@ -1,4 +1,5 @@
 import type { GameState } from '../../shared/types';
+import { presentGatlingWoman } from '../../shared/gatlingGeometry';
 
 // Presentation only. The server's rules and round durations are unchanged.
 // Resolution timeline (ms after resolutionStartedAt), shared by host + phones:
@@ -7,14 +8,22 @@ import type { GameState } from '../../shared/types';
 //   move         the volley fires (ammo spent)
 //   impact       bullets land; health and barrels update
 //   settle       callouts fade; server starts next round at RESOLUTION_MS
-export const VOLLEY = { reveal: 450, move: 850, impact: 1250, settle: 2100 };
+import { VOLLEY } from '../../shared/volley';
+export { VOLLEY } from '../../shared/volley';
 export const estimateOffset = (sent: number, received: number, server: number) => server - (sent + received) / 2;
 export function presentState(state: GameState, now: number): GameState {
+  const progress = state.phase === 'planning' && state.tickStartTime != null
+    ? Math.max(0, Math.min(1, (now - state.tickStartTime) / state.config.tickDuration)) : 1;
+  const resolutionElapsed = state.phase === 'resolution' && state.resolutionStartedAt != null ? now - state.resolutionStartedAt : -1;
+  const showCivilian = (frame: GameState): GameState => {
+    const woman = presentGatlingWoman(frame.walkingWoman, progress, resolutionElapsed, state.config.tickDuration);
+    return woman === frame.walkingWoman ? frame : { ...frame, walkingWoman: woman };
+  };
   const before = state.resolutionFrom;
-  if (state.phase !== 'resolution' || !before || state.resolutionStartedAt == null) return state;
+  if (state.phase !== 'resolution' || !before || state.resolutionStartedAt == null) return showCivilian(state);
   const elapsed = now - state.resolutionStartedAt;
-  if (elapsed >= VOLLEY.impact) return state;
-  return {
+  if (elapsed >= VOLLEY.impact) return showCivilian(state);
+  return showCivilian({
     ...state,
     players: state.players.map(p => {
       const old = before.players.find(o => o.id === p.id);
@@ -23,7 +32,7 @@ export function presentState(state: GameState, now: number): GameState {
     barrels: before.barrels,
     walkingWoman: before.walkingWoman ?? state.walkingWoman,
     pendingSuicides: before.pendingSuicides ?? state.pendingSuicides,
-  };
+  });
 }
 export function newerState(previous: GameState | null, incoming: GameState) {
   return !previous || previous.roomCode !== incoming.roomCode || incoming.revision >= previous.revision ? incoming : previous;

@@ -1,14 +1,12 @@
 /*
- * Procedural spaghetti-western sound design. Everything is synthesized via
- * Web Audio — no audio assets. Organized around:
+ * Generated western recording plus procedural gameplay effects. Organized around:
  *   - playX() — one-shot SFX tied to game events (most take an optional
  *     stereo `pan`: -1 = left / sheriffs, +1 = right / outlaws)
- *   - startAmbient() / stopAmbient() / setMusicIntensity() — generated score
- *     (see soundMusic.ts)
+ *   - startAmbient() / stopAmbient() — the locally bundled Runway recording
  *   - setMuted() / setVolume() — global controls
  *
  * Graph: effects + short echo/reverb → effects volume + warmth ─┐
- *        fingerpicked score → music volume → duck ─────────────┼→ compressor
+ *        recorded score → music volume → duck ────────────────┼→ compressor
  *        → limiter → soft peak ceiling → master → output.
  *
  * AudioContext is created lazily and resumed on the first user gesture. When
@@ -21,13 +19,13 @@ import {
   makePanner,
   midiToFreq,
   pluck,
-  startMusic,
   tone,
   type BurstOpts,
-  type MusicHandle,
   type PluckKind,
   type ToneOpts,
 } from './soundMusic';
+import { startRecordedMusic, WESTERN_TRACK, type MusicPlaybackStatus, type RecordedMusicHandle } from './recordedMusic';
+export { WESTERN_TRACK } from './recordedMusic';
 
 type Ctor = typeof AudioContext;
 const getCtor = (): Ctor | null => {
@@ -105,8 +103,13 @@ let graph: Graph | null = null;
 let ctxFailed = false;
 let muted = readMuted();
 let userVolume = 0.7;
-let music: MusicHandle | null = null;
-let musicIntensity = 0;
+let music: RecordedMusicHandle | null = null;
+let musicRoundDuration = 4;
+let musicStatus: MusicPlaybackStatus = 'idle';
+const musicListeners = new Set<() => void>();
+export function getMusicStatus(): MusicPlaybackStatus { return musicStatus; }
+export function subscribeMusicStatus(listener: () => void) { musicListeners.add(listener); return () => { musicListeners.delete(listener); }; }
+function setMusicStatus(status: MusicPlaybackStatus) { musicStatus = status; musicListeners.forEach(listener => listener()); }
 
 function makeImpulse(c: BaseAudioContext, dur: number): AudioBuffer {
   // Short, dark room response; kept behind the direct material sound.
@@ -245,6 +248,7 @@ function resumeIfNeeded(): void {
 
 // Register a listener for the first interaction so autoplay-gated audio can start
 let gestureHooked = false;
+let removeGestureHooks = () => {};
 function hookFirstGesture(): void {
   if (gestureHooked) return;
   gestureHooked = true;
@@ -255,6 +259,7 @@ function hookFirstGesture(): void {
   };
   const events = ['pointerdown', 'keydown', 'touchstart'];
   events.forEach((e) => globalThis.addEventListener(e, kick, { once: true, passive: true }));
+  removeGestureHooks = () => events.forEach(e => globalThis.removeEventListener(e, kick));
 }
 hookFirstGesture();
 
@@ -275,6 +280,26 @@ export function isMuted(): boolean { return muted; }
 export function setVolume(v: number): void {
   userVolume = clamp(Number.isFinite(v) ? v : userVolume, 0, 1);
   applyMasterGain();
+}
+
+/** Quiet continuous rain on the effects bus; no musical beat or round cue. */
+export function startRainSound(): (() => void) | undefined {
+  const c = ensureCtx();
+  if (!c || !graph) return;
+  resumeIfNeeded();
+  const source = c.createBufferSource(), filter = c.createBiquadFilter(), gain = c.createGain();
+  source.buffer = graph.white; source.loop = true;
+  filter.type = 'bandpass'; filter.frequency.value = 1650; filter.Q.value = 0.45;
+  gain.gain.setValueAtTime(0, c.currentTime); gain.gain.linearRampToValueAtTime(0.13, c.currentTime + 0.6);
+  source.connect(filter).connect(gain).connect(graph.sfx); source.start();
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    gain.gain.cancelScheduledValues(c.currentTime); gain.gain.setTargetAtTime(0, c.currentTime, 0.08);
+    source.stop(c.currentTime + 0.4);
+    source.onended = () => [source, filter, gain].forEach(safeDisconnect);
+  };
 }
 
 // ---- Voice plumbing ----------------------------------------------------
@@ -381,6 +406,77 @@ export function playGunshot(pan = 0): void {
   T(v, { type: 'sine', freq: 150 * r, freqEnd: 42, glide: 0.09, dur: 0.17, gain: 0.38, attack: 0.004 });
   // Tail — rumble that feeds the canyon echo
   N(v, { at: 0.01, dur: 0.38, gain: 0.1, attack: 0.012, filter: { type: 'bandpass', freq: 650 * r, q: 0.6 } });
+}
+
+/** Wooden wheels, axle strain and distant iron announce the slow approach. */
+export function playGatlingApproach(durationSec = 4): void {
+  if (repeated('gatling-approach', 1)) return;
+  const span = clamp(durationSec * 0.72, 1.5, 3.4);
+  const v = voice(0, { echo: 0.035, reverb: 0.06, life: span + 0.4, gain: 0.72 });
+  if (!v) return;
+  duckMusic(0.78, span * 0.55, 0.55);
+  N(v, { brown: true, dur: span, gain: 0.3, attack: 0.18, hold: span * 0.72, sustain: 0.58, filter: { type: 'lowpass', freq: 260, freqEnd: 150, sweep: span } });
+  const knocks = Math.max(5, Math.round(span / 0.34));
+  for (let i = 0; i < knocks; i++) {
+    const at = 0.12 + i * (span - 0.3) / Math.max(1, knocks - 1);
+    // Alternating wheel loads: felt as a restrained ground thump rather than
+    // another musical beat. It grows as the cart gets closer.
+    const near = 0.55 + i / Math.max(1, knocks - 1) * 0.45;
+    T(v, { at, type: 'sine', freq: i % 2 ? 43 : 36, freqEnd: 27, glide: 0.13, dur: 0.24, gain: 0.16 * near, attack: 0.012 });
+    N(v, { at, dur: 0.055, gain: i % 2 ? 0.1 : 0.15, attack: 0.004, filter: { type: 'bandpass', freq: i % 2 ? 620 : 430, q: 2.2 } });
+    T(v, { at, type: 'triangle', freq: i % 2 ? 155 : 118, freqEnd: 82, dur: 0.15, gain: 0.09, attack: 0.006 });
+  }
+  for (const at of [span * 0.28, span * 0.68]) {
+    T(v, { at, type: 'sawtooth', freq: 285, freqEnd: 126, glide: 0.36, dur: 0.48, gain: 0.025, attack: 0.05, filter: { type: 'bandpass', freq: 720, q: 2.4 } });
+  }
+}
+
+/** Final axle groan as the cart becomes visible, kept shorter than the warning. */
+export function playGatlingArrival(): void {
+  if (repeated('gatling-arrival', 0.8)) return;
+  const v = voice(0, { echo: 0.04, reverb: 0.04, life: 1.25, gain: 0.64 });
+  if (!v) return;
+  N(v, { brown: true, dur: 0.85, gain: 0.18, attack: 0.04, filter: { type: 'lowpass', freq: 190, freqEnd: 95, sweep: 0.7 } });
+  for (let i = 0; i < 4; i++) {
+    const at = 0.08 + i * 0.19;
+    T(v, { at, type: 'sine', freq: i % 2 ? 48 : 39, freqEnd: 28, glide: 0.1, dur: 0.2, gain: 0.13, attack: 0.008 });
+    N(v, { at, dur: 0.045, gain: 0.09, attack: 0.003, filter: { type: 'bandpass', freq: 390 + i * 70, q: 2.1 } });
+  }
+}
+
+/** Heavy wheel impact and dry cloth/earth scrape when the cart catches a corpse. */
+export function playGatlingCrush(): void {
+  if (repeated('gatling-crush', 0.8)) return;
+  const v = voice(0, { echo: 0.025, life: 0.85, gain: 0.62 });
+  if (!v) return;
+  T(v, { at: 0.34, type: 'sine', freq: 76, freqEnd: 31, glide: 0.13, dur: 0.28, gain: 0.28, attack: 0.004 });
+  N(v, { at: 0.34, brown: true, dur: 0.34, gain: 0.24, attack: 0.003, filter: { type: 'lowpass', freq: 520, freqEnd: 170, sweep: 0.22 } });
+  N(v, { at: 0.38, dur: 0.2, gain: 0.12, attack: 0.002, filter: { type: 'bandpass', freq: 980, q: 1.1 } });
+}
+
+/** Ratchet, crank and barrel whine immediately before the burst. */
+export function playGatlingSpinUp(): void {
+  if (repeated('gatling-spin', 0.5)) return;
+  const v = voice(0, { echo: 0.025, life: 0.75, gain: 0.72 });
+  if (!v) return;
+  let at = 0;
+  for (let i = 0; i < 9; i++) {
+    N(v, { at, dur: 0.018, gain: 0.13 + i * 0.008, attack: 0.002, filter: { type: 'bandpass', freq: 1050 + i * 95, q: 2.6 } });
+    T(v, { at, type: 'triangle', freq: 340 + i * 42, dur: 0.04, gain: 0.035, attack: 0.002 });
+    at += 0.075 - i * 0.0045;
+  }
+  T(v, { type: 'sawtooth', freq: 62, freqEnd: 150, glide: 0.55, dur: 0.62, gain: 0.035, attack: 0.06, filter: { type: 'bandpass', freq: 430, q: 1.3 } });
+}
+
+/** A compact mechanical crack, intentionally shorter than the revolvers. */
+export function playGatlingShot(pan = 0): void {
+  const v = voice(pan, { echo: 0.035, reverb: 0.025, life: 0.25, gain: volleyScale('gatling') * 0.78 });
+  if (!v) return;
+  const r = rand(0.94, 1.06);
+  N(v, { dur: 0.027, gain: 0.34, attack: 0.001, filter: { type: 'highpass', freq: 1800 * r }, filter2: { type: 'bandpass', freq: 2850 * r, q: 0.9 } });
+  N(v, { dur: 0.11, gain: 0.36, attack: 0.001, filter: { type: 'lowpass', freq: 950 * r, freqEnd: 260, sweep: 0.075, q: 0.8 } });
+  T(v, { type: 'sine', freq: 118 * r, freqEnd: 48, glide: 0.065, dur: 0.12, gain: 0.31, attack: 0.002 });
+  T(v, { at: 0.018, type: 'triangle', freq: 610 * r, freqEnd: 330, glide: 0.05, dur: 0.08, gain: 0.07, attack: 0.001 });
 }
 
 export function playFleshHit(pan = 0): void {
@@ -526,16 +622,6 @@ export function playCountdownTick(urgency: number): void {
   N(v, { dur: 0.016, gain: 0.035, attack: 0.003, filter: { type: 'bandpass', freq: 900, q: 0.6 } });
 }
 
-export function playRoundStart(): void {
-  if (repeated('round-start', 0.4)) return;
-  const v = voice(0, { life: 0.8 }); if (!v) return;
-  P(v, 57, 0, 0.2); P(v, 64, 0.07, 0.12);
-}
-
-export function playTickStart(): void {
-  playRoundStart();
-}
-
 export function playReveal(): void {
   if (repeated('reveal', 0.3)) return;
   const v = voice(0, { life: 0.3 }); if (!v) return;
@@ -594,6 +680,7 @@ export function playDefeat(): void {
 
 export function startAmbient(): void {
   if (music) return;
+  if (musicStatus === 'error') return; // Retry explicitly, not on every round.
   const c = ensureCtx();
   if (!c || !graph) return;
   resumeIfNeeded();
@@ -601,28 +688,47 @@ export function startAmbient(): void {
   graph.duck.gain.cancelScheduledValues(c.currentTime);
   graph.duck.gain.setValueAtTime(1, c.currentTime);
   try {
-    music = startMusic({
+    const current = startRecordedMusic({
       ctx: c,
       dest: graph.music,
-      reverb: null,
-      white: graph.white,
-      brown: graph.brown,
-      isMuted: () => muted || !audioPreferences.musicEnabled || audioPreferences.musicVolume === 0,
-      intensity: musicIntensity,
+      durationSec: musicRoundDuration,
+      onStatus: setMusicStatus,
+    });
+    music = current;
+    void current.ready.catch(error => {
+      if (music === current) music = null;
+      console.warn(`Could not load ${WESTERN_TRACK.title}`, error);
     });
   } catch {
-    music = null;
+    music = null; setMusicStatus('error');
   }
 }
 
 export function stopAmbient(): void {
-  if (!music) return;
-  music.stop();
+  music?.stop();
   music = null;
+  setMusicStatus('idle');
 }
 
-/** 0..1 — a small tempo lift and a quiet brush on the backbeat. */
-export function setMusicIntensity(level: number): void {
-  musicIntensity = clamp(Number.isFinite(level) ? level : 0, 0, 1);
-  music?.setIntensity(musicIntensity);
+/** Retry the actual recording, never fall back to the previous synth track. */
+export function retryMusic(): void {
+  if (musicStatus !== 'error') return;
+  setMusicStatus('idle');
+  startAmbient();
+}
+
+/** Match the round's tempo without restarting or marking its first beat. */
+export function syncMusicRound(durationMs: number): void {
+  musicRoundDuration = clamp(Number.isFinite(durationMs) ? durationMs / 1000 : 4, 1, 10);
+  music?.syncRound(musicRoundDuration);
+}
+
+// Let soundtrack updates propagate to React so its playback effect restarts
+// with the new module. Dispose old audio and gesture hooks before the refresh.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    removeGestureHooks();
+    stopAmbient();
+    void ctx?.close().catch(() => undefined);
+  });
 }
