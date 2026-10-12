@@ -1,14 +1,14 @@
 /*
- * Procedural spaghetti-western sound design. Everything is synthesized via
- * Web Audio — no audio assets. Organized around:
+ * Western sound design: procedural effects and the recorded Dusty Silence soundtrack.
+ * Both use the same Web Audio mixer. Organized around:
  *   - playX() — one-shot SFX tied to game events (most take an optional
  *     stereo `pan`: -1 = left / sheriffs, +1 = right / outlaws)
- *   - startAmbient() / stopAmbient() / setMusicIntensity() — generated score
+ *   - startAmbient() / stopAmbient() — recorded gameplay soundtrack
  *     (see soundMusic.ts)
  *   - setMuted() / setVolume() — global controls
  *
  * Graph: effects + short echo/reverb → effects volume + warmth ─┐
- *        fingerpicked score → music volume → duck ─────────────┼→ compressor
+ *        recorded score → music volume → duck ─────────────┼→ compressor
  *        → limiter → soft peak ceiling → master → output.
  *
  * AudioContext is created lazily and resumed on the first user gesture. When
@@ -106,7 +106,6 @@ let ctxFailed = false;
 let muted = readMuted();
 let userVolume = 0.7;
 let music: MusicHandle | null = null;
-let musicIntensity = 0;
 
 function makeImpulse(c: BaseAudioContext, dur: number): AudioBuffer {
   // Short, dark room response; kept behind the direct material sound.
@@ -601,15 +600,12 @@ export function startAmbient(): void {
   graph.duck.gain.cancelScheduledValues(c.currentTime);
   graph.duck.gain.setValueAtTime(1, c.currentTime);
   try {
-    music = startMusic({
+    const handle = startMusic({
       ctx: c,
       dest: graph.music,
-      reverb: null,
-      white: graph.white,
-      brown: graph.brown,
-      isMuted: () => muted || !audioPreferences.musicEnabled || audioPreferences.musicVolume === 0,
-      intensity: musicIntensity,
+      onError: () => { if (music === handle) music = null; },
     });
+    music = handle;
   } catch {
     music = null;
   }
@@ -621,8 +617,5 @@ export function stopAmbient(): void {
   music = null;
 }
 
-/** 0..1 — a small tempo lift and a quiet brush on the backbeat. */
-export function setMusicIntensity(level: number): void {
-  musicIntensity = clamp(Number.isFinite(level) ? level : 0, 0, 1);
-  music?.setIntensity(musicIntensity);
-}
+/** Compatibility with arena cues: keep the recording's original tempo and pitch. */
+export function setMusicIntensity(_level: number): void {}

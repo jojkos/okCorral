@@ -83,7 +83,7 @@ The game is played in simultaneous turns.
 - **Cover is obvious**: a covering player crouches *behind* their barrel (hat peeking out), the barrel glows in team colour and their plate reads `⛨ IN COVER`. Covering behind a broken barrel shows `⚠ NO COVER`.
 - **Plates** on the outer edges show name, hearts and bullets; `READY` appears once a player has locked in. Barrels show their remaining strength as notches.
 - **Drama**: hit-stop and screen shake on hits, hats fly on kills, round headlines (CLANG!, DOUBLE KILL, LAST ONE STANDING…), and a slow-motion zoom on the match-ending shot.
-- **Sound**: synthesized western score that intensifies as players fall, stereo-panned gunshots with canyon echo, ricochets, splinters, spurs, cylinder spins, 3‑2‑1 countdown ticks.
+- **Sound**: the recorded *Dusty Silence* western soundtrack loops during matches through the existing music volume, mute and ducking controls, stereo-panned gunshots with canyon echo, ricochets, splinters, spurs, cylinder spins, 3‑2‑1 countdown ticks.
 - **Phones**: lane mini-map, aim preview for every shot, threat warning, per-round recap, haptics; dead players spectate and send emotes to the TV.
 - **Lobby/End**: add bots to fill seats, how-to-play card, MVP, awards and a per-player recap; a session score carries across "Play again".
 

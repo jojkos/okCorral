@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "start": "tsx server/index.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
-    "test": "node --import tsx --test tests/sync.test.ts tests/gameplay.test.ts",
+    "test": "node --import tsx --test tests/sync.test.ts tests/gameplay.test.ts tests/music.test.ts",
     "test:network": "node --import tsx tests/network.integration.ts"
   },
   "dependencies": {

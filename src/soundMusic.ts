@@ -1,5 +1,5 @@
 /*
- * Synth primitives + the generated spaghetti-western score.
+ * Synth primitives for western sound effects and the recorded score entry point.
  *
  * Everything here is a pure function of an AudioContext handed in by
  * sound.ts — no module-level audio state, so importing this file can never
@@ -271,85 +271,5 @@ export function pluck(c: BaseAudioContext, dest: AudioNode, freq: number, when: 
   src.start(when);
 }
 
-// ---- The score -----------------------------------------------------------
-// A slow, fingerpicked nylon guitar and a restrained bass. Every bar has rests;
-// intensity adds a light wooden brush, never another competing lead voice.
-const CHORDS = [
-  { root: 45, fifth: 40, notes: [52, 57, 60, 64] },
-  { root: 43, fifth: 38, notes: [50, 55, 59, 62] },
-  { root: 41, fifth: 36, notes: [53, 57, 60, 65] },
-  { root: 40, fifth: 35, notes: [52, 56, 59, 64] },
-];
-const PROG = [0, 0, 1, 1, 2, 2, 3, 3];
-export interface MusicEnv {
-  ctx: AudioContext;
-  dest: AudioNode;
-  reverb: AudioNode | null;
-  white: AudioBuffer;
-  brown: AudioBuffer;
-  isMuted: () => boolean;
-  intensity: number;
-}
-export interface MusicHandle {
-  stop: () => void;
-  setIntensity: (level: number) => void;
-}
-export function startMusic(env: MusicEnv): MusicHandle {
-  const c = env.ctx;
-  const owned: AudioNode[] = [];
-  const keep = <T extends AudioNode>(n: T): T => { owned.push(n); return n; };
-  const bus = keep(c.createGain());
-  bus.gain.setValueAtTime(0, c.currentTime);
-  bus.gain.linearRampToValueAtTime(1, c.currentTime + 1.8);
-  bus.connect(env.dest);
-  const guitar = keep(c.createGain());
-  const body = keep(c.createBiquadFilter());
-  body.type = 'peaking'; body.frequency.value = 230; body.Q.value = 0.8; body.gain.value = 2;
-  const warmth = keep(c.createBiquadFilter());
-  warmth.type = 'lowpass'; warmth.frequency.value = 2300; warmth.Q.value = 0.5;
-  const pan = makePanner(c, -0.13); keep(pan.node);
-  guitar.connect(body).connect(warmth).connect(pan.node).connect(bus);
-  const bass = keep(c.createBiquadFilter());
-  bass.type = 'lowpass'; bass.frequency.value = 480; bass.Q.value = 0.5; bass.connect(bus);
-  let level = clamp(env.intensity, 0, 1), target = level;
-  let step = 0, nextTime = c.currentTime + 0.1, stopped = false;
-  const tick = () => {
-    if (stopped) return;
-    const now = c.currentTime;
-    const lookahead = typeof document !== 'undefined' && document.hidden ? 1.2 : 0.15;
-    if (nextTime < now - 0.05) nextTime = now + 0.03;
-    while (nextTime < now + lookahead) {
-      level += (target - level) * 0.2;
-      const eighth = 60 / (76 + level * 4) / 2;
-      const slot = step % 8, bar = Math.floor(step / 8) % 8;
-      const chord = CHORDS[PROG[bar]];
-      if (!env.isMuted()) {
-        // Four fingers, with the last beat left open on alternating bars.
-        const pattern = bar % 2 ? [0, -1, 2, -1, 1, -1, -1, -1] : [0, -1, 2, 3, -1, 1, -1, -1];
-        const note = pattern[slot];
-        if (note >= 0) pluck(c, guitar, midiToFreq(chord.notes[note]), nextTime + Math.random() * 0.006, slot === 0 ? 0.38 : 0.28, 'nylon');
-        if (slot === 0) pluck(c, bass, midiToFreq(chord.root), nextTime, 0.48, 'bass');
-        if (slot === 4 && bar % 2 === 0) pluck(c, bass, midiToFreq(chord.fifth), nextTime, 0.3, 'bass');
-        // A sparse higher guitar answer replaces the high whistle.
-        if (bar % 2 === 1 && slot === 5) pluck(c, guitar, midiToFreq(chord.notes[3]), nextTime, 0.2, 'nylon');
-        if (level > 0.5 && (slot === 2 || slot === 6)) burst(c, {
-          dest: bus, when: nextTime, buffer: env.brown, dur: 0.065,
-          gain: 0.1 * (level - 0.5), attack: 0.008,
-          filter: { type: 'bandpass', freq: 900, q: 0.6 },
-        });
-      }
-      nextTime += eighth; step++;
-    }
-  };
-  const timer = setInterval(tick, 25); tick();
-  return {
-    setIntensity: (value) => { target = clamp(value, 0, 1); },
-    stop: () => {
-      if (stopped) return;
-      stopped = true; clearInterval(timer);
-      bus.gain.cancelScheduledValues(c.currentTime);
-      bus.gain.setTargetAtTime(0, c.currentTime, 0.12);
-      setTimeout(() => owned.forEach(safeDisconnect), 700);
-    },
-  };
-}
+// Recorded gameplay score; synthesis above remains available for sound effects.
+export { startMusic, type MusicHandle } from './recordedMusic';
