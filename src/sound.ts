@@ -52,6 +52,8 @@ export interface AudioPreferences {
   effectsVolume: number;
 }
 const AUDIO_KEY = 'okCorral-audio';
+// Keep the soundtrack behind the gameplay, including for saved volume settings.
+const MUSIC_GAIN = 0.09;
 const defaults: AudioPreferences = { musicEnabled: true, effectsEnabled: true, musicVolume: 0.3, effectsVolume: 0.7 };
 function readAudioPreferences(): AudioPreferences {
   try {
@@ -82,7 +84,7 @@ export function setAudioPreferences(next: Partial<AudioPreferences>): void {
   try { globalThis.localStorage?.setItem(AUDIO_KEY, JSON.stringify(audioPreferences)); } catch { /* storage unavailable */ }
   if (ctx && graph) {
     graph.sfx.gain.setTargetAtTime(audioPreferences.effectsEnabled ? audioPreferences.effectsVolume * 0.8 : 0, ctx.currentTime, 0.03);
-    graph.music.gain.setTargetAtTime(audioPreferences.musicEnabled ? audioPreferences.musicVolume * 0.45 : 0, ctx.currentTime, 0.05);
+    graph.music.gain.setTargetAtTime(audioPreferences.musicEnabled ? audioPreferences.musicVolume * MUSIC_GAIN : 0, ctx.currentTime, 0.05);
   }
   audioListeners.forEach(listener => listener());
 }
@@ -179,7 +181,7 @@ function buildGraph(c: AudioContext): Graph {
   const duck = c.createGain();
   duck.connect(comp);
   const musicBus = c.createGain();
-  musicBus.gain.value = audioPreferences.musicEnabled ? audioPreferences.musicVolume * 0.45 : 0;
+  musicBus.gain.value = audioPreferences.musicEnabled ? audioPreferences.musicVolume * MUSIC_GAIN : 0;
   musicBus.connect(duck);
 
   // Quiet stereo reflection with little feedback; avoids repeated sharp attacks.
