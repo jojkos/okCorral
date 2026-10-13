@@ -11,11 +11,12 @@ export function teamLabel(team: Team): string {
 }
 
 /** Head-and-shoulders crop of the animated canvas cowboy. Size is set in CSS. */
-export function PlayerAvatar({ player, className = '' }: { player: Pick<Player, 'name' | 'team'>; className?: string }) {
+export function PlayerAvatar({ player, className = '' }: { player: Pick<Player, 'name' | 'team' | 'appearance'>; className?: string }) {
   return (
     <span className={`hx-avatar hx-avatar--${player.team} ${className}`} aria-hidden="true">
       <CowboyPortrait
         team={player.team}
+        appearance={player.appearance}
         size={150}
         facing={player.team === 'sheriffs' ? 1 : -1}
         seed={nameSeed(player.name)}

@@ -215,6 +215,7 @@ function MvpSpotlight({ player }: { player: Player }) {
         <span className="he-mvp__halo" />
         <CowboyPortrait
           team={player.team}
+          appearance={player.appearance}
           size={260}
           facing={player.team === 'sheriffs' ? 1 : -1}
           seed={nameSeed(player.name)}

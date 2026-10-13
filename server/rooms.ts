@@ -18,7 +18,7 @@ import { initialGatlingManState, initialStrongWindState, initialWalkingWomanStat
 import { initialRainState } from './rain.js';
 import { advanceRoundEvents } from './roundEvents.js';
 import { eventSettings } from '../shared/eventSettings.js';
-import { GameConfigPatchSchema } from '../shared/validation.js';
+import { GameConfigPatchSchema, SelectAppearanceSchema } from '../shared/validation.js';
 
 interface Room {
   code: string;
@@ -207,6 +207,7 @@ export class RoomManager {
           name: existingPlayer.name,
           team: existingPlayer.team,
           slot: existingPlayer.slot,
+          appearance: existingPlayer.appearance ?? 0,
         },
       };
     }
@@ -226,6 +227,7 @@ export class RoomManager {
       actionLocked: false,
       currentAction: "NONE",
       isCovered: false,
+      appearance: 0,
     };
 
     room.state.players.push(player);
@@ -262,6 +264,7 @@ export class RoomManager {
         name: player.name,
         team: player.team,
         slot: player.slot,
+        appearance: player.appearance,
       },
     };
   }
@@ -319,6 +322,21 @@ export class RoomManager {
 
     player.team = team;
     player.slot = slot;
+    return { success: true };
+  }
+
+  // A socket supplies only the design, never a target player ID. Selection is
+  // cosmetic, retained on the player across team changes, reconnects and matches.
+  selectAppearance(playerId: string, roomCode: string, appearance: number): { success: boolean; error?: string } {
+    const parsed = SelectAppearanceSchema.safeParse(appearance);
+    if (!parsed.success) return { success: false, error: "Choose one of the eight character designs" };
+    const room = rooms.get(roomCode);
+    if (!room) return { success: false, error: "Room not found" };
+    if (room.state.phase !== "lobby") return { success: false, error: "Character designs are locked once the gunfight starts" };
+    const player = room.state.players.find((p) => p.id === playerId && !p.isBot);
+    if (!player || playerRooms.get(playerId) !== roomCode) return { success: false, error: "Player not found" };
+    player.appearance = parsed.data;
+    this.broadcastState(roomCode);
     return { success: true };
   }
 
@@ -676,10 +694,12 @@ export class RoomManager {
     if (slot === null) return { success: false, error: "Team is full" };
     const taken = new Set(room.state.players.map((p) => p.name));
     const name = BOT_NAMES.find((n) => !taken.has(n)) ?? `Bot ${room.state.players.length + 1}`;
+    const usedDesigns = new Set(room.state.players.filter((p) => p.team === team && p.slot >= 0).map((p) => p.appearance ?? 0));
+    const appearance = Array.from({ length: 8 }, (_, i) => i).find((i) => !usedDesigns.has(i)) ?? slot % 8;
     room.state.players.push({
       id: `bot-${roomCode}-${Math.random().toString(36).slice(2, 9)}`,
       name, team, slot, hp: 3, ammo: 1, isAlive: true, actionLocked: false,
-      currentAction: "NONE", isCovered: false, isBot: true,
+      currentAction: "NONE", isCovered: false, isBot: true, appearance,
     });
     this.broadcastState(roomCode);
     return { success: true };

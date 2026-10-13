@@ -5,6 +5,7 @@ import { RoomManager, publicState } from "./rooms.js";
 import {
   JoinRoomSchema,
   SelectTeamSchema,
+  SelectAppearanceSchema,
   TakeSeatSchema,
   LockActionSchema,
   GameConfigSchema,
@@ -181,6 +182,17 @@ io.on("connection", (socket) => {
     } catch (error) {
       socket.emit("error", "Invalid team");
     }
+  });
+
+  socket.on("selectAppearance", (appearance) => {
+    const parsed = SelectAppearanceSchema.safeParse(appearance);
+    const playerId = socket.data.playerId as string | undefined;
+    if (!parsed.success) { socket.emit("error", "Invalid character design"); return; }
+    if (!playerId) return;
+    const roomCode = roomManager.getPlayerRoom(playerId);
+    if (!roomCode) return;
+    const result = roomManager.selectAppearance(playerId, roomCode, parsed.data);
+    if (!result.success) socket.emit("error", result.error || "Cannot select that character");
   });
 
   // Player picks a specific spot (lane) on a team

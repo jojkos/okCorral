@@ -58,7 +58,7 @@ export interface BulletAnim extends ShotFlight { id: string; bornAt: number; dur
 export interface Impact { x: number; y: number; t: number; kind: 'player' | 'barrel' | 'bullet' | 'woman'; lethal?: boolean }
 export interface Floater { x: number; y: number; text: string; t: number; color: string; size: number; life: number }
 export interface Banner { text: string; sub?: string; t: number; life: number; color: string; size: number; y: number }
-export interface FlyingHat { x: number; y: number; vx: number; vy: number; rot: number; vr: number; ground: number; team: Team; s: number; landed: boolean }
+export interface FlyingHat { x: number; y: number; vx: number; vy: number; rot: number; vr: number; ground: number; team: Team; appearance?: number; s: number; landed: boolean }
 export interface EmoteFx { emoji: string; x: number; y: number; t: number; name: string; team: Team }
 
 export function drawMuzzles(ctx: CanvasRenderingContext2D, list: Muzzle[], t: number) {
@@ -215,7 +215,7 @@ export function stepHats(list: FlyingHat[], dt: number) {
 export function drawHats(ctx: CanvasRenderingContext2D, list: FlyingHat[]) {
   for (const h of list) {
     ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(h.rot); ctx.scale(h.s, h.s);
-    drawHat(ctx, h.team);
+    drawHat(ctx, h.team, h.appearance);
     ctx.restore();
   }
 }

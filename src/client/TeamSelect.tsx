@@ -1,6 +1,8 @@
 import type { ClientPlayer, GameState, Team, Player } from '../../shared/types';
+import { CHARACTER_DESIGNS, getCharacterDesign } from '../../shared/characterDesigns';
 import { socket } from '../socket';
 import { WesternBackdrop, StarEmblem, SkullEmblem } from '../components/WesternUI';
+import CowboyPortrait from '../components/CowboyPortrait';
 import './team-select.css';
 
 interface TeamSelectProps {
@@ -8,10 +10,11 @@ interface TeamSelectProps {
   gameState: GameState;
   error: string | null;
   onSelectTeam: (team: Team) => void;
+  onSelectAppearance: (appearance: number) => void;
   onLeave: () => void;
 }
 
-export default function TeamSelect({ player, gameState, error, onSelectTeam, onLeave }: TeamSelectProps) {
+export default function TeamSelect({ player, gameState, error, onSelectTeam, onSelectAppearance, onLeave }: TeamSelectProps) {
   const { config, players } = gameState;
   const sheriffs = players.filter((p) => p.team === 'sheriffs' && p.slot >= 0);
   const outlaws = players.filter((p) => p.team === 'outlaws' && p.slot >= 0);
@@ -20,6 +23,8 @@ export default function TeamSelect({ player, gameState, error, onSelectTeam, onL
   const isSheriff = player.slot >= 0 && player.team === 'sheriffs';
   const isOutlaw = player.slot >= 0 && player.team === 'outlaws';
   const canStart = bothSidesReady && (isSheriff || isOutlaw);
+  const characterTeam = isSheriff ? 'sheriffs' : isOutlaw ? 'outlaws' : null;
+  const design = characterTeam ? getCharacterDesign(characterTeam, player.appearance) : null;
 
   return (
     <WesternBackdrop>
@@ -41,6 +46,27 @@ export default function TeamSelect({ player, gameState, error, onSelectTeam, onL
             selected={isOutlaw} meId={player.id} onPick={() => onSelectTeam('outlaws')}
             onSeat={(slot) => socket.emit('takeSeat', { team: 'outlaws', slot })} />
         </div>
+        {characterTeam && design && <section className={`character-pick ${characterTeam}`} aria-labelledby="character-pick-title">
+          <div className="character-pick-heading">
+            <div><h2 id="character-pick-title">Choose your gunslinger</h2><p>Eight looks. Same grit, same abilities.</p></div>
+            <span className="character-team-color">{characterTeam === 'sheriffs' ? 'The law · blue' : 'The wanted · red'}</span>
+          </div>
+          <div className="character-pick-grid" role="group" aria-label={`Character designs for ${characterTeam}`}>
+            {CHARACTER_DESIGNS[characterTeam].map((option) => {
+              const selected = option.id === design.id;
+              return <button key={option.id} type="button"
+                className={`character-card${selected ? ' is-selected' : ''}`} aria-pressed={selected}
+                aria-label={`${option.name}${selected ? ', selected' : ''}. ${option.description}`}
+                onClick={() => onSelectAppearance(option.id)}>
+                <span className="character-card-portrait" aria-hidden="true"><CowboyPortrait team={characterTeam}
+                  appearance={option.id} size={102} facing={characterTeam === 'outlaws' ? -1 : 1} animated={false} /></span>
+                <strong>{option.name}</strong>
+                <span className="character-card-status">{selected ? '✓ Selected' : 'Choose'}</span>
+              </button>;
+            })}
+          </div>
+          <p className="character-pick-description" aria-live="polite"><strong>{design.name}</strong> · {design.description}</p>
+        </section>}
         {unassigned.length > 0 && <p className="lobby-undecided">Choosing a side: {unassigned.map((p) => p.name).join(' · ')}</p>}
         <footer className="phone-lobby-footer">
           <div className="phone-lobby-footer-inner">

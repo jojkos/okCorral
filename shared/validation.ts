@@ -11,6 +11,7 @@ export const JoinRoomSchema = z.object({
 });
 
 export const SelectTeamSchema = z.enum(["sheriffs", "outlaws"]);
+export const SelectAppearanceSchema = z.number().int().min(0).max(7);
 
 export const TakeSeatSchema = z.object({
   team: SelectTeamSchema,

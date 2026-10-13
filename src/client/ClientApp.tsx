@@ -110,6 +110,7 @@ export default function ClientApp() {
           name: updatedPlayer.name,
           team: updatedPlayer.team,
           slot: updatedPlayer.slot,
+          appearance: updatedPlayer.appearance ?? 0,
         });
       }
     });
@@ -189,6 +190,7 @@ export default function ClientApp() {
         gameState={gameState}
         error={error}
         onSelectTeam={(team) => socket.emit('selectTeam', team)}
+        onSelectAppearance={(appearance) => socket.emit('selectAppearance', appearance)}
         onLeave={leaveSession}
       />
     );

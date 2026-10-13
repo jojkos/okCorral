@@ -85,7 +85,7 @@ export function drawActor(ctx: CanvasRenderingContext2D, L: Layout, p: Player, f
   // Keep all artwork at the same size. Knees and hips articulate inside the rig.
   ctx.scale(s, s);
   ctx.translate(0, -63);
-  drawCowboy(ctx, p.team, facing, motion ? t : 0, nameSeed(p.name), { ...pose, cover: f.cover, hat: !anim.hatGone });
+  drawCowboy(ctx, p.team, facing, motion ? t : 0, nameSeed(p.name), { ...pose, cover: f.cover, hat: !anim.hatGone, appearance: p.appearance });
   ctx.restore();
 }
 

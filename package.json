@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "start": "tsx server/index.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
-    "test": "node --import tsx --test tests/sync.test.ts tests/gameplay.test.ts tests/music.test.ts tests/recordedMusic.test.ts tests/gatlingCollision.test.ts tests/rain.test.ts tests/eventSettings.test.ts tests/animations.test.ts tests/motionPreferences.test.ts",
+    "test": "node --import tsx --test tests/sync.test.ts tests/gameplay.test.ts tests/music.test.ts tests/recordedMusic.test.ts tests/gatlingCollision.test.ts tests/rain.test.ts tests/eventSettings.test.ts tests/animations.test.ts tests/motionPreferences.test.ts tests/weatherPresentation.test.ts tests/npcTransitions.test.ts tests/characterSelection.test.ts",
     "test:network": "node --import tsx tests/network.integration.ts"
   },
   "dependencies": {

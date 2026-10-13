@@ -1,5 +1,6 @@
 import type { Team, WalkingWomanState } from './types.js';
 import { bulletLaneFeet, facingOf, gunHeight, slotLayout, teamX, womanScale, type Layout } from './arenaGeometry.js';
+import { civilianLaneFeet } from './civilianGeometry.js';
 
 export interface ShotCurve {
   fromX: number; fromY: number; controlX: number; controlY: number; toX: number; toY: number;
@@ -60,7 +61,7 @@ function roots(a: number, b: number, c: number): number[] {
  * A tapered silhouette follows head, shoulders, arms, skirt and boots; cosmetic
  * stride/basket motion doesn't change the authoritative hitbox mid-volley. */
 export function civilianIntersection(c: ShotCurve, L: Layout, slot: number): number | null {
-  const s = womanScale(L), feet = bulletLaneFeet(L, slot);
+  const s = womanScale(L), feet = civilianLaneFeet(L, slot);
   const outline = [[-17,-167],[17,-167],[22,-126],[30,-114],[32,-72],[25,-64],[35,-17],[21,-13],[21,2],[-21,2],[-21,-13],[-35,-17],[-25,-64],[-32,-72],[-30,-114],[-22,-126]];
   const points = outline.map(([x,y]) => ({x: L.midX + x*s, y: feet + y*s}));
   let first: number | null = null;
@@ -79,7 +80,9 @@ export function civilianIntersection(c: ShotCurve, L: Layout, slot: number): num
   return first;
 }
 export function shotCivilianHit(slots: number, team: Team, slot: number, path: {aimedSlot: number; targetSlot: number}, woman: WalkingWomanState) {
-  if (woman.phase !== 'walking' || woman.slot === null) return null;
+  // A survivor who has finished leaving is no longer part of the showdown.
+  // Extreme wind-curved shots must not kill her invisibly beyond the canvas.
+  if (woman.phase !== 'walking' || woman.slot === null || woman.slot < 0 || woman.slot >= slots) return null;
   const L = slotLayout(slots);
   return civilianIntersection(playerShotCurve(L, team, slot, path.aimedSlot, path.targetSlot), L, woman.slot);
 }

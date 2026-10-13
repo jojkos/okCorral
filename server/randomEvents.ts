@@ -130,7 +130,7 @@ export function advanceWalkingWoman(
   }
 
   if (previous.phase === "dead") {
-    if (previous.slot !== null && (previous.slot < 0 || previous.slot >= slotsPerSide)) {
+    if (previous.slot !== null && (previous.slot <= -1 || previous.slot >= slotsPerSide)) {
       return { ...previous, phase: "gone", direction: null, slot: null, fromSlot: null };
     }
     if (previous.slot === null) {

@@ -1,8 +1,10 @@
 import type { Barrel, StrongWindState, Team, WalkingWomanState } from '../../../shared/types';
+import { civilianFeet } from '../../../shared/civilianGeometry';
+import { windParticleY, type WindPresentation } from './weatherPresentation';
 import { drawDeadWoman, drawGatlingWheelMarks, drawWomanBloodTrail } from './womanRemains';
 import { drawAliveWoman } from './womanWalking';
 import { COL, roundRect } from '../../lib/cowboyDraw';
-import { CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, bulletLaneFeet, rand, womanScale } from './layout';
+import { CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, rand, womanScale } from './layout';
 
 
 export function drawBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, t: number) {
@@ -38,9 +40,11 @@ export function drawBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElem
 }
 
 /** Dust and tumbleweeds live in the arena layer, behind the gunfighters. */
-export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, wind: StrongWindState, travel: number) {
+export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, wind: StrongWindState, travel: number, presentation?: WindPresentation) {
   if (wind.phase === 'calm' || !wind.direction) return;
   const active = wind.phase === 'active';
+  const activeMix = presentation?.activeMix ?? Number(active);
+  const opacity = presentation?.opacity ?? 1;
   const dir = wind.direction === 'up' ? -1 : 1;
   // Recycle only when the whole weed / longest dust tail is off the street.
   const pad = 200;
@@ -53,15 +57,15 @@ export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, 
   ctx.clip();
 
   // Dry, hand-drawn dust streaks make the strong phase visibly harsher.
-  if (active) {
+  if (activeMix > 0) {
     ctx.lineCap = 'round';
     for (let i = 0; i < 13; i++) {
       const x = 500 + rand(i * 41 + 8) * 600;
       const base = rand(i * 53 + 17) * span;
       // Loose dust travels faster than the heavier rolling brush.
-      const y = L.top - pad + wrap(base + travel * 2.4);
+      const y = L.top - pad + (presentation ? windParticleY(presentation, base, span, 2.4) : wrap(base + travel * 2.4));
       const len = 50 + rand(i * 19) * 110;
-      ctx.globalAlpha = 0.3 + rand(i * 7) * 0.22;
+      ctx.globalAlpha = opacity * activeMix * (0.3 + rand(i * 7) * 0.22);
       const width = 2 + rand(i * 29) * 3;
       ctx.beginPath();
       ctx.moveTo(x, y);
@@ -78,12 +82,14 @@ export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, 
   }
 
   // The warning already reveals direction, but rolls much more gently.
-  for (let i = 0; i < (active ? 5 : 3); i++) {
+  for (let i = 0; i < 5; i++) {
+    const alpha = opacity * (i < 3 ? 0.8 + 0.2 * activeMix : activeMix);
+    if (alpha <= 0) continue;
     const x = 560 + rand(i * 67 + 4) * 480;
     const base = rand(i * 37 + 3) * span;
-    const y = L.top - pad + wrap(base + travel);
+    const y = L.top - pad + (presentation ? windParticleY(presentation, base, span) : wrap(base + travel));
     const r = 24 + rand(i * 23) * 10;
-    drawTumbleweed(ctx, x, y, r, travel / r + i, active ? 1 : 0.8, i + 1);
+    drawTumbleweed(ctx, x, y, r, travel / r + i, alpha, i + 1);
   }
   ctx.restore();
 }
@@ -93,11 +99,7 @@ export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, 
 export function drawWalkingWoman(ctx: CanvasRenderingContext2D, L: Layout, woman: WalkingWomanState, t: number, motion: boolean, roundProgress: number, crush?: { fall: number; compression: number; dust: number }) {
   const s = womanScale(L);
   const headSide = woman.killedFromTeam === 'outlaws' ? -1 : 1;
-  const targetFeet = woman.slot === null ? null : bulletLaneFeet(L, woman.slot);
-  const fromFeet = woman.fromSlot === null ? targetFeet : bulletLaneFeet(L, woman.fromSlot);
-  const feet = targetFeet === null || fromFeet === null
-    ? null
-    : fromFeet + (targetFeet - fromFeet) * roundProgress;
+  const feet = civilianFeet(L, woman, roundProgress);
   drawGatlingWheelMarks(ctx, L, woman, feet);
   drawWomanBloodTrail(ctx, L, woman, s, headSide, roundProgress);
   if (woman.phase === 'inactive' || woman.phase === 'gone' || woman.slot === null || feet === null) return;

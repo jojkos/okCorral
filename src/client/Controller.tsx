@@ -136,7 +136,7 @@ export default function Controller({ player, gameState, error, onLeave }: Contro
   return <WesternBackdrop dark><main className="controller-shell ctl">
     <div className="ctl-top">
       <header className="ctl-head">
-        <span className="ctl-portrait"><CowboyPortrait team={team} size={54} facing={team === 'outlaws' ? -1 : 1} /></span>
+        <span className="ctl-portrait"><CowboyPortrait team={team} appearance={mine?.appearance ?? player.appearance} size={54} facing={team === 'outlaws' ? -1 : 1} /></span>
         <div className="ctl-who"><span className="eyebrow">{team === 'sheriffs' ? 'The law' : 'The wanted'} · Lane {slot + 1}/{lanes}</span><h1>{player.name}</h1></div>
         <div className="ctl-vitals">
           <div aria-label={`${hp} of 3 health`}>{[0, 1, 2].map(i => <Heart key={i} size={17} className={`vital-heart ${i < hp ? 'filled' : ''}`} aria-hidden />)}</div>

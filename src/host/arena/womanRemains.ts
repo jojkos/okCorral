@@ -1,6 +1,7 @@
 import type { WalkingWomanState } from '../../../shared/types';
-import { bulletLaneFeet, clamp01, rand, type Layout } from './layout';
+import { clamp01, rand, type Layout } from './layout';
 import { GATLING_ENTRY_Y, GATLING_STOP_Y, GATLING_EXIT_Y } from '../../../shared/gatlingGeometry';
+import { civilianLaneFeet } from '../../../shared/civilianGeometry';
 
 type Canvas = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
@@ -55,7 +56,7 @@ export function drawWomanBloodTrail(ctx: Canvas, L: Layout, woman: WalkingWomanS
   const trail = woman.bloodTrail;
   if (!trail.length) return;
   const headX = L.midX + headSide * 65 * s;
-  const headY = (slot: number) => bulletLaneFeet(L, slot) - 13 * s;
+  const headY = (slot: number) => civilianLaneFeet(L, slot) - 13 * s;
   ctx.save();
   ctx.beginPath(); ctx.rect(472, L.top - L.slotHeight, 656, L.slotHeight * (L.n + 2)); ctx.clip();
   ctx.lineCap = 'round';
@@ -110,8 +111,9 @@ export function drawWomanBloodTrail(ctx: Canvas, L: Layout, woman: WalkingWomanS
  * perspective. They don't grow from the skyline or follow the sliding body forever. */
 export function drawGatlingWheelMarks(ctx: Canvas, L: Layout, woman: WalkingWomanState, feet: number | null) {
   if (!woman.crushedByGatling || woman.gatlingCrushSlot == null) return;
-  const start = bulletLaneFeet(L, woman.gatlingCrushSlot);
-  const end = woman.gatlingCrushedThisRound && feet !== null ? Math.min(start + L.slotHeight, feet) : start + L.slotHeight;
+  const start = civilianLaneFeet(L, woman.gatlingCrushSlot);
+  const destination = civilianLaneFeet(L, woman.gatlingCrushSlot + 1);
+  const end = woman.gatlingCrushedThisRound && feet !== null ? Math.min(destination, feet) : destination;
   if (end <= start) return;
   ctx.save(); ctx.lineCap = 'round';
   for (const side of [-1, 1]) {

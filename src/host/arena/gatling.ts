@@ -1,5 +1,6 @@
 import type { GatlingManState, GatlingTarget, WalkingWomanState } from '../../../shared/types';
 import { GATLING_STOP_Y, gatlingPosition, gatlingCrushAge, gatlingCrushTrail, presentGatlingWoman } from '../../../shared/gatlingGeometry';
+import { civilianLaneFeet } from '../../../shared/civilianGeometry';
 import { bulletLaneFeet, clamp01, type Layout } from './layout';
 export { gatlingMuzzlePoint } from '../../../shared/gatlingGeometry';
 
@@ -28,10 +29,11 @@ if (typeof Image !== 'undefined') {
  * late-joining hosts. Travel follows the server clock, not the slowed FX clock. */
 export function gatlingTravel(roundProgress: number, resolutionElapsed = -1, motion = true) {
   const { arrival, departure, scale, y, p } = gatlingPosition(roundProgress, resolutionElapsed);
+  const smooth = (v: number) => { const x = clamp01(v); return x * x * (3 - 2 * x); };
   return { p: motion ? p : 1, scale: motion ? scale : 0.9,
     y: motion ? y : GATLING_STOP_Y,
     // With motion on the entire cart has crossed the bottom edge before hiding.
-    alpha: motion ? Number(departure < 1) : 1 - clamp01((departure - 0.75) / 0.25),
+    alpha: motion ? Number(departure < 1) : smooth(arrival / 0.3) * (1 - smooth((departure - 0.65) / 0.35)),
     rolling: motion && (arrival < 1 || (departure > 0 && departure < 1)) };
 }
 
@@ -50,7 +52,8 @@ export function gatlingWomanFrame(L: Layout, woman: WalkingWomanState, gatling: 
     bloodTrail: gatlingCrushTrail(hit),
   };
   const cart = gatlingPosition(roundProgress, elapsed);
-  const push = clamp01((cart.contactY - bulletLaneFeet(L, hit.slot)) / L.slotHeight);
+  const contactFeet = civilianLaneFeet(L, hit.slot);
+  const push = clamp01((cart.contactY - contactFeet) / (civilianLaneFeet(L, hit.slot + 1) - contactFeet));
   return { woman: resolved, progress: motion ? push : 1, crush: {
     fall: hit.before.phase === 'walking' ? (motion ? clamp01(age / 190) : 1) : 1,
     compression: motion ? clamp01(age / 220) : 1,

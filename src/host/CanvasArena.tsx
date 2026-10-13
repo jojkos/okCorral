@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { Bullet, GameState, Player, Team, Emote } from '../../shared/types';
 import { playerShotCurve, type ShotFlight } from '../../shared/ballistics';
 import { resolvedBulletFlight } from '../../shared/bulletFlight';
+import { civilianFeet } from '../../shared/civilianGeometry';
 import { socket, serverNow } from '../socket';
 import { VOLLEY } from '../lib/presentation';
 import { roundHeadline } from '../lib/recap';
@@ -11,7 +12,7 @@ import { BADGE_MIN_Y, CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, barrel
 import { drawBackground, drawBarrel, drawStrongWindWeather, drawVignette, drawWalkingWoman } from './arena/scene';
 import { drawGatlingMan, gatlingTravel, gatlingWomanFrame } from './arena/gatling';
 import { drawRain, drawRainGround, drawSwallows } from './arena/rain';
-import { createWindMotion, stepWindMotion, type WindMotion } from './arena/windMotion';
+import { createWeatherPresentation, stepWeatherPresentation, type WeatherPresentation } from './arena/weatherPresentation';
 import { ActorAnim, ActorFrame, actorFrame, drawActionBadge, drawActor, drawIntentMarker, drawPlate, headY } from './arena/actors';
 import { Banner, BulletAnim, EmoteFx, Floater, FlyingHat, Impact, Muzzle, ParticleSystem, drawBanners, drawBullets, drawEmotes, drawFloaters, drawHats, drawImpacts, drawMuzzles, stepHats } from './arena/fx';
 import { drawCountdown, drawHUD, drawLegend } from './arena/hud';
@@ -36,7 +37,7 @@ interface AnimState {
   flash: number;
   /** Animation clock (seconds), slowed by hit-stop / slow-mo. */
   t: number;
-  wind: WindMotion;
+  weather: WeatherPresentation;
   slowUntil: number;
   slowScale: number;
   /** Short camera punch on each gatling round; decays between shots. */
@@ -55,7 +56,7 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
   const gsRef = useRef<GameState>(gameState);
   const stRef = useRef<AnimState>({
     particles: new ParticleSystem(), bullets: [], muzzles: [], impacts: [], floaters: [], banners: [], hats: [], emotes: [],
-    shake: { x: 0, y: 0, mag: 0, until: 0 }, flash: 0, t: 0, wind: createWindMotion(), slowUntil: 0, slowScale: 1, gatlingKick: 0,
+    shake: { x: 0, y: 0, mag: 0, until: 0 }, flash: 0, t: 0, weather: createWeatherPresentation(), slowUntil: 0, slowScale: 1, gatlingKick: 0,
     cam: { zoom: 1, x: CANVAS_W / 2, y: CANVAS_H / 2, tz: 1, tx: CANVAS_W / 2, ty: CANVAS_H / 2 },
     anims: {}, frames: {}, timeLeft: 0, lastCountdown: 0, finalAt: null,
   });
@@ -90,7 +91,7 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
         if (f && !reducedMotion()) {
           a.hatGone = true;
           const dir = -facingOf(p.team);
-          st.hats.push({ x: f.x, y: headY(L, f) + 20 * L.s, vx: dir * (50 + Math.random() * 70), vy: -480 - Math.random() * 160, rot: 0, vr: dir * (8 + Math.random() * 6), ground: f.feet - 6, team: p.team, s: L.s, landed: false });
+          st.hats.push({ x: f.x, y: headY(L, f) + 20 * L.s, vx: dir * (50 + Math.random() * 70), vy: -480 - Math.random() * 160, rot: 0, vr: dir * (8 + Math.random() * 6), ground: f.feet - 6, team: p.team, appearance: p.appearance, s: L.s, landed: false });
         }
       }
       if (!last || (last.isAlive === false && p.isAlive)) { a.deathAt = undefined; a.hatGone = false; }
@@ -337,7 +338,7 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
       const motion = !reducedMotion();
       // Weather keeps its own real-time travel, even during impact hit-stop.
       // A background-tab gap is a pause, not a whole storm fast-forward.
-      stepWindMotion(st.wind, gs.strongWind, elapsed > 0.5 || document.hidden ? 0 : elapsed, motion);
+      stepWeatherPresentation(st.weather, gs, serverNow(), elapsed > 0.5 || document.hidden ? 0 : elapsed, motion);
       if (motion && st.t < st.shake.until) {
         const decay = Math.max(0, st.shake.until - st.t) / 0.3;
         st.shake.x = (Math.random() - 0.5) * st.shake.mag * decay;
@@ -395,17 +396,18 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
   ctx.translate(-st.cam.x, -st.cam.y);
 
   drawBackground(ctx, bg, st.t);
-  drawRainGround(ctx, gs, st.t, motion);
-  drawSwallows(ctx, gs, serverNow(), roundProgress, elapsed, motion, 'ground');
-  drawStrongWindWeather(ctx, L, gs.strongWind, st.wind.travel);
+  drawRainGround(ctx, gs, st.weather.time, motion, st.weather);
+  drawSwallows(ctx, gs, serverNow(), roundProgress, elapsed, motion, 'ground', st.weather);
+  for (const wind of [...st.weather.departingWinds, st.weather.wind]) {
+    drawStrongWindWeather(ctx, L, wind.weather, wind.motion.travel, wind);
+  }
   const gatlingTarget = gs.gatlingMan.phase !== 'active' || !gs.gatlingMan.targets.length ? null
     : gs.gatlingMan.targets[Math.max(0, Math.min(gs.gatlingMan.targets.length - 1,
       elapsed >= VOLLEY.move ? Math.floor((elapsed - VOLLEY.move) / 42) : Math.floor(st.t * 1.5) % gs.gatlingMan.targets.length))];
   const civilian = gatlingWomanFrame(L, gs.walkingWoman, gs.gatlingMan, roundProgress, elapsed, motion, gs.config.tickDuration);
   const drawCart = () => drawGatlingMan(ctx, L, gs.gatlingMan, st.t, motion, gatlingTarget, roundProgress, elapsed >= VOLLEY.reveal && elapsed <= VOLLEY.impact, elapsed, civilian.crush?.bump ?? 0);
   const drawCivilian = () => drawWalkingWoman(ctx, L, civilian.woman, st.t, motion, civilian.progress, civilian.crush);
-  const womanFeet = civilian.woman.slot === null ? -Infinity : bulletLaneFeet(L, civilian.woman.fromSlot ?? civilian.woman.slot)
-    + (civilian.woman.slot - (civilian.woman.fromSlot ?? civilian.woman.slot)) * L.slotHeight * civilian.progress;
+  const womanFeet = civilianFeet(L, civilian.woman, civilian.progress) ?? -Infinity;
   if (!civilian.crush && gatlingTravel(roundProgress, elapsed, motion).y < womanFeet) { drawCart(); drawCivilian(); }
   else { drawCivilian(); drawCart(); }
 
@@ -472,11 +474,11 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
   }
 
   drawMuzzles(ctx, st.muzzles, st.t);
-  drawSwallows(ctx, gs, serverNow(), roundProgress, elapsed, motion, 'air');
+  drawSwallows(ctx, gs, serverNow(), roundProgress, elapsed, motion, 'air', st.weather);
   if (motion) st.particles.draw(ctx);
   drawBullets(ctx, st.bullets, st.t);
   drawImpacts(ctx, st.impacts, st.t);
-  drawRain(ctx, gs, st.t, motion);
+  drawRain(ctx, gs, st.weather.time, motion, st.weather);
 
   // Plates, then intent markers / action badges above heads.
   for (const p of seated) {

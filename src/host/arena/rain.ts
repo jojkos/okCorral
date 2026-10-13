@@ -1,6 +1,7 @@
 import type { GameState } from '../../../shared/types';
 import { swallowPosition, SWALLOW_FALL_MS } from '../../../shared/swallows';
 import { CANVAS_W, CANVAS_H, clamp01, rand } from './layout';
+import { departingSwallowPose, type WeatherPresentation } from './weatherPresentation';
 
 /** Ink-blue back, ivory belly, russet throat and long forked tail. */
 function swallow(ctx: CanvasRenderingContext2D, flap: number, dead = false) {
@@ -19,7 +20,7 @@ function swallow(ctx: CanvasRenderingContext2D, flap: number, dead = false) {
   if (!dead) { ctx.fillStyle = '#f6e6c9'; ctx.fillRect(10, -2, 1.4, 1.4); }
 }
 
-export function drawSwallows(ctx: CanvasRenderingContext2D, gs: GameState, now: number, progress: number, elapsed: number, motion: boolean, layer: 'ground' | 'air') {
+export function drawSwallows(ctx: CanvasRenderingContext2D, gs: GameState, now: number, progress: number, elapsed: number, motion: boolean, layer: 'ground' | 'air', weather?: WeatherPresentation) {
   for (const bird of gs.rain?.swallows ?? []) {
     const body = bird.remains;
     const age = body ? (body.hitTick === gs.tick ? elapsed - body.hitAt : Infinity) : -Infinity;
@@ -50,27 +51,56 @@ export function drawSwallows(ctx: CanvasRenderingContext2D, gs: GameState, now: 
     }
     ctx.restore();
   }
+  if (layer !== 'air' || !weather) return;
+  for (const flight of weather.departingBirds) {
+    const pose = departingSwallowPose(flight, now);
+    if (pose.progress >= 1) continue;
+    const position = motion ? pose : { ...pose, ...flight.start };
+    ctx.save();
+    // Respect reduced motion without cutting the last visible frame off.
+    if (!motion) ctx.globalAlpha *= 1 - pose.progress;
+    ctx.fillStyle = 'rgba(34,30,24,.13)'; ctx.beginPath();
+    ctx.ellipse(position.x, Math.min(876, position.y + 64), 17, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.translate(position.x, position.y);
+    ctx.rotate(motion ? pose.angle : departingSwallowPose(flight, flight.startedAt).angle);
+    ctx.scale(.85, .85);
+    swallow(ctx, motion ? pose.flap : 0);
+    ctx.restore();
+  }
 }
 
-export function drawRainGround(ctx: CanvasRenderingContext2D, gs: GameState, t: number, motion: boolean) {
-  if (gs.rain?.phase !== 'active') return;
+export function drawRainGround(ctx: CanvasRenderingContext2D, gs: GameState, t: number, motion: boolean, weather?: WeatherPresentation) {
+  const wetness = weather?.wetness ?? (gs.rain?.phase === 'active' ? 1 : 0);
+  const rainfall = weather?.rainfall ?? (gs.rain?.phase === 'active' ? 1 : 0);
+  if (wetness <= 0) return;
   ctx.save();
-  ctx.fillStyle = 'rgba(48,69,78,.23)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
   ctx.beginPath(); ctx.rect(480, 140, 640, 760); ctx.clip();
+  ctx.globalAlpha *= wetness;
   for (let i = 0; i < 24; i++) {
     const x = 510 + rand(i * 71) * 580, y = 180 + rand(i * 97) * 710;
     const width = 12 + rand(i * 31) * 55;
     ctx.fillStyle = 'rgba(131,159,163,.17)'; ctx.beginPath(); ctx.ellipse(x, y, width, width * 0.14, -0.05, 0, Math.PI * 2); ctx.fill();
     const p = motion ? (t * 1.7 + rand(i * 113)) % 1 : 0.6;
-    ctx.strokeStyle = `rgba(201,217,208,${(1-p)*0.26})`; ctx.lineWidth = 1;
+    ctx.strokeStyle = `rgba(201,217,208,${(1-p)*0.26*rainfall})`; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.ellipse(x, y, 2 + p * 17, 1 + p * 4, 0, 0, Math.PI * 2); ctx.stroke();
   }
   ctx.restore();
 }
 
-export function drawRain(ctx: CanvasRenderingContext2D, gs: GameState, t: number, motion: boolean) {
-  if (gs.rain?.phase !== 'active') return;
-  ctx.save(); ctx.lineCap = 'round';
+export function drawRain(ctx: CanvasRenderingContext2D, gs: GameState, t: number, motion: boolean, weather?: WeatherPresentation) {
+  const intensity = weather?.rainfall ?? (gs.rain?.phase === 'active' ? 1 : 0);
+  const cloud = weather?.cloud ?? (gs.rain?.phase === 'active' ? 1 : 0);
+  if (intensity <= 0 && cloud <= 0) return;
+  ctx.save();
+  // Called after world actors and before nameplates/HUD: cloud cover changes
+  // the whole scene's light consistently without dimming gameplay information.
+  ctx.fillStyle = `rgba(35,51,66,${cloud * .3})`; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  if (weather?.clearing) {
+    ctx.fillStyle = `rgba(255,215,147,${Math.sin(cloud * Math.PI) * .09})`;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  }
+  ctx.globalAlpha *= intensity;
+  ctx.lineCap = 'round';
   const slant = gs.strongWind.phase === 'active' ? (gs.strongWind.direction === 'up' ? -15 : 15) : -6;
   for (let i = 0; i < (motion ? 170 : 65); i++) {
     const speed = 440 + rand(i * 67) * 320;

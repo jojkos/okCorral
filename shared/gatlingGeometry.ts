@@ -1,8 +1,9 @@
 import { bulletLaneFeet, type Layout } from './arenaGeometry.js';
+import { civilianFeet, civilianSlotAtFeet } from './civilianGeometry.js';
 import type { GatlingCrush, GatlingTarget, WalkingWomanState } from './types.js';
 
 /** Centre-street travel in the same world coordinates as player/civilian lanes. */
-export const GATLING_ENTRY_Y = 118;
+export const GATLING_ENTRY_Y = -140;
 export const GATLING_STOP_Y = 425;
 export const GATLING_EXIT_Y = 1275;
 export const GATLING_DEPARTURE_MS = 1390;
@@ -35,8 +36,7 @@ export function gatlingPosition(roundProgress: number, resolutionElapsed = -1) {
  * Arrival uses planning progress; departure happens after shots have landed. */
 export function gatlingContact(L: Layout, woman: WalkingWomanState, leg: 'arrival' | 'departure') {
   if (woman.slot === null || (woman.phase !== 'walking' && woman.phase !== 'dead')) return null;
-  const to = woman.slot, from = woman.fromSlot ?? to;
-  const feet = (p: number) => bulletLaneFeet(L, leg === 'arrival' ? from + (to - from) * p : to);
+  const feet = (p: number) => civilianFeet(L, woman, leg === 'arrival' ? p : 1)!;
   const cart = (p: number) => leg === 'arrival' ? gatlingPosition(p).contactY
     : gatlingPosition(1, GATLING_DEPARTURE_MS + p * GATLING_DEPARTURE_DURATION_MS).contactY;
   // Keep checking through the whole planning phase: a pedestrian may walk
@@ -51,9 +51,9 @@ export function gatlingContact(L: Layout, woman: WalkingWomanState, leg: 'arriva
       for (let n = 0; n < 24; n++) { const mid = (lo + hi) / 2; if (gap(mid) > 0) lo = mid; else hi = mid; }
       const y = feet(hi);
       // Someone who already walked off-screen cannot be hit by an unseen cart.
-      if (y >= GATLING_ENTRY_Y && y <= 900) return {
+      if (y >= 0 && y <= 900) return {
         leg, at: leg === 'arrival' ? hi : GATLING_DEPARTURE_MS + hi * GATLING_DEPARTURE_DURATION_MS,
-        slot: (y - L.feet[0]) / L.slotHeight,
+        slot: civilianSlotAtFeet(L, y),
       };
     }
     previous = next;

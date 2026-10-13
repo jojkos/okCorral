@@ -1,5 +1,6 @@
 import { drawSpriteCowboy, drawSpriteHat } from './cowboySprites';
 import type { Team } from '../../shared/types';
+import { getCharacterDesign } from '../../shared/characterDesigns';
 export const COL = {
   sheriff: '#549d9d',
   sheriffDark: '#285462',
@@ -349,6 +350,7 @@ function drawHatShape(c: Canvas, law: boolean) {
 }
 // Articulated vector character. Poses are presentation-only.
 export interface CowboyPose {
+  appearance?: number;
   walk?: number;
   recoil?: number;
   reload?: number;
@@ -358,11 +360,12 @@ export interface CowboyPose {
 }
 export function drawCowboy(c: Canvas, team: Team, facing: 1 | -1, time: number, seed = 0, pose: CowboyPose = {}) {
   if (drawSpriteCowboy(c, team, facing, time, seed, pose)) return;
+  const design = getCharacterDesign(team, pose.appearance);
   const law = team === 'sheriffs',
-    coat = law ? COL.sheriff : COL.outlaw,
-    dark = law ? COL.sheriffDark : COL.outlawDark,
-    light = law ? COL.sheriffLight : COL.outlawLight;
-  const skin = ['#d9a87c', '#bc865e', '#e5b78e'][Math.abs(seed) % 3],
+    coat = design.coat,
+    dark = design.dark,
+    light = design.light;
+  const skin = design.skin,
     walk = pose.walk || 0,
     recoil = pose.recoil || 0,
     reload = pose.reload || 0,
@@ -782,8 +785,8 @@ export function drawCowboy(c: Canvas, team: Team, facing: 1 | -1, time: number, 
   c.restore();
 }
 // A loose hat, centred on its brim, uses the same silhouette as the worn hat.
-export function drawHat(ctx: Canvas, team: Team) {
-  if (drawSpriteHat(ctx, team)) return;
+export function drawHat(ctx: Canvas, team: Team, appearance = 0) {
+  if (drawSpriteHat(ctx, team, appearance)) return;
   ctx.save();
   ctx.translate(0, 42);
   drawHatShape(ctx, team === 'sheriffs');

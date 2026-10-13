@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import type { Team } from '../../shared/types';
 import { reducedMotion } from '../lib/motionPreferences';
 import { drawCowboy } from '../lib/cowboyDraw';
+import { subscribeCowboySprites } from '../lib/cowboySprites';
+import { getCharacterDesign } from '../../shared/characterDesigns';
 
 // The cowboy is drawn around origin (0,0) with bounds roughly
 // y: -61 (hat top) to y: +66 (boots), x: -30 to +61 (revolver).
@@ -16,6 +18,7 @@ interface CowboyPortraitProps {
   facing?: 1 | -1;
   seed?: number;
   animated?: boolean;
+  appearance?: number;
 }
 
 export default function CowboyPortrait({
@@ -24,6 +27,7 @@ export default function CowboyPortrait({
   facing = 1,
   seed = 0,
   animated = true,
+  appearance = 0,
 }: CowboyPortraitProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
@@ -57,13 +61,14 @@ export default function CowboyPortrait({
       ctx.arc(0, 0, 31, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-      drawCowboy(ctx, team, facing, animated && !reducedMotion() ? t / 1000 : 0, seed);
+      drawCowboy(ctx, team, facing, animated && !reducedMotion() ? t / 1000 : 0, seed, { appearance });
       ctx.restore();
       if (animated) rafRef.current = requestAnimationFrame(render);
     };
+    const unsubscribe = subscribeCowboySprites(() => { if (!animated) render(0); });
     rafRef.current = requestAnimationFrame(render);
-    return () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); };
-  }, [team, facing, seed, animated, size]);
+    return () => { unsubscribe(); if (rafRef.current != null) cancelAnimationFrame(rafRef.current); };
+  }, [team, facing, seed, animated, size, appearance]);
 
   const height = size;
   const width = Math.round((LOGICAL_W / LOGICAL_H) * size);
@@ -71,6 +76,8 @@ export default function CowboyPortrait({
   return (
     <canvas
       ref={canvasRef}
+      role="img"
+      aria-label={`${getCharacterDesign(team, appearance).name} — ${team}`}
       style={{
         width,
         height,

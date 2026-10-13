@@ -7,6 +7,8 @@ import { actorFrame, drawActor } from '../src/host/arena/actors';
 import { drawGatlingMan } from '../src/host/arena/gatling';
 import { drawRain, drawRainGround, drawSwallows } from '../src/host/arena/rain';
 import { drawBanners, drawBullets, drawEmotes, drawFloaters, drawHats, drawImpacts, drawMuzzles, ParticleSystem, stepHats } from '../src/host/arena/fx';
+import { weatherTransitionCases } from './weatherTransitions.browser';
+import { characterDesignCases } from './characterDesigns.browser';
 
 export type AnimationCase = { name: string; wind?: StrongWindState; draw: (ctx: CanvasRenderingContext2D, progress: number, motion: boolean, slots: number) => void };
 export const wind = (phase: StrongWindState['phase'], direction: 'up' | 'down'): StrongWindState => ({phase, direction, activeRoundsRemaining: 2, cooldownRoundsRemaining: 0});
@@ -18,6 +20,8 @@ export function animationGame(): GameState {
     players:[],barrels:[],pendingActions:[],pendingSuicides:[],lastTickSuicides:[],lastTickBullets:[],winner:null};
 }
 export const animationCases: AnimationCase[] = [
+  ...weatherTransitionCases,
+  ...characterDesignCases,
   ...(['warning','active'] as const).flatMap(phase => (['up','down'] as const).map(direction => ({
     wind: wind(phase,direction),
     name:`Wind ${phase} ${direction}`, draw:(ctx:CanvasRenderingContext2D,p:number,motion:boolean,n:number)=>{
@@ -31,6 +35,19 @@ export const animationCases: AnimationCase[] = [
   {name:'Swallow falling',draw(ctx,p,motion){const gs=animationGame();gs.rain.swallows=[{id:'bird',seed:7,bornAt:10000,remains:{x:800,y:570,fromY:570,hitX:800,hitY:460,hitAngle:0.4,hitAt:900,hitTick:12}}];for(const layer of ['air','ground'] as const)drawSwallows(ctx,gs,11000,p,900+p*500,motion,layer);}},
   {name:'Swallow remains in wind',draw(ctx,p,motion){const gs=animationGame();gs.rain.swallows=[{id:'bird',seed:7,bornAt:10000,remains:{x:800,y:700,fromY:550,hitX:800,hitY:460,hitAngle:0.4,hitAt:900,hitTick:11}}];drawSwallows(ctx,gs,11000,p,-1,motion,'ground');}},
   ...(['walking','dead'] as const).map(phase=>({name:`Civilian ${phase}`,draw:(ctx:CanvasRenderingContext2D,p:number,motion:boolean,n:number)=>drawWalkingWoman(ctx,slotLayout(n),civilian(phase),p,motion,p)})),
+  ...(['entry','exit'] as const).flatMap(leg=>(['up','down'] as const).map(direction=>({
+    name:`Civilian ${leg} ${direction}`,draw:(ctx:CanvasRenderingContext2D,p:number,motion:boolean,n:number)=>{
+      const fromSlot=leg==='entry'?(direction==='down'?-1:n):(direction==='down'?n-1:0);
+      const slot=leg==='entry'?(direction==='down'?0:n-1):(direction==='down'?n:-1);
+      drawWalkingWoman(ctx,slotLayout(n),{...civilian('walking'),slot,fromSlot,direction},p*4,motion,p);
+    },
+  }))),
+  ...(['up','down'] as const).map(direction=>({
+    name:`Civilian remains exit ${direction}`,draw:(ctx:CanvasRenderingContext2D,p:number,motion:boolean,n:number)=>{
+      const fromSlot=direction==='down'?n-1.35:.35,slot=direction==='down'?n+.15:-1.15;
+      drawWalkingWoman(ctx,slotLayout(n),{...civilian('dead'),slot,fromSlot,direction,bloodTrail:[fromSlot,slot]},p*4,motion,p);
+    },
+  })),
   {name:'Civilian crushed',draw(ctx,p,motion,n){drawWalkingWoman(ctx,slotLayout(n),{...civilian('dead'),crushedByGatling:true},p,motion,p,{fall:p,compression:p,dust:1-p});}},
   ...(['arrival','firing','departure'] as const).map(leg=>({name:`Gatling ${leg}`,draw:(ctx:CanvasRenderingContext2D,p:number,motion:boolean,n:number)=>drawGatlingMan(ctx,slotLayout(n),animationGame().gatlingMan,2+p,motion,{team:'outlaws',slot:0},leg==='arrival'?p:1,leg==='firing',leg==='departure'?1390+p*1000:-1)})),
   ...(['move','cover','reload','recoil','death','guilt'] as const).map(action=>({name:`Player ${action}`,draw:(ctx:CanvasRenderingContext2D,p:number,motion:boolean,n:number)=>{

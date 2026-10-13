@@ -33,6 +33,7 @@ export interface Player {
   currentAction: ActionType;
   isCovered: boolean;
   // Presentation/meta only — never read by the combat resolver.
+  appearance?: number; // Character design 0–7; missing legacy values use 0.
   isBot?: boolean;
   stats?: PlayerStats;
 }
@@ -219,6 +220,7 @@ export interface ClientPlayer {
   name: string;
   team: Team | null;
   slot: number;
+  appearance?: number;
 }
 
 // Socket events from server to client
@@ -255,6 +257,7 @@ export interface ClientToServerEvents {
   resumeHost: (data: { roomCode: string; hostId: string }) => void;
   joinRoom: (data: { roomCode: string; playerName: string; playerId: string }) => void;
   selectTeam: (team: Team) => void;
+  selectAppearance: (appearance: number) => void;
   takeSeat: (data: { team: Team; slot: number }) => void;
   leaveTeam: () => void;
   lockAction: (action: ActionType) => void;

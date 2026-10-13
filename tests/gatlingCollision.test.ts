@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { GameState, WalkingWomanState } from '../shared/types';
 import { bulletLaneFeet, slotLayout } from '../shared/arenaGeometry';
 import { gatlingContact, gatlingPosition } from '../shared/gatlingGeometry';
+import { civilianFeet, civilianLaneFeet } from '../shared/civilianGeometry';
 import { initialStrongWindState, advanceWalkingWoman, runOverWomanWithGatling } from '../server/randomEvents';
 import { resolveActions } from '../server/actions';
 import { presentState, VOLLEY } from '../src/lib/presentation';
@@ -30,9 +31,9 @@ test('arrival kills a living civilian in either walking direction at the swept c
     assert.ok(hit, 'path really crosses the carriage');
     assert.equal(after.phase, 'dead'); assert.equal(after.crushedByGatling, true);
     assert.equal(hit.before.phase, 'walking'); assert.equal(after.killedFromTeam, null);
-    const womanY = bulletLaneFeet(L, before.fromSlot! + (before.slot! - before.fromSlot!) * hit.at);
+    const womanY = civilianFeet(L, before, hit.at)!;
     assert.ok(Math.abs(womanY - gatlingPosition(hit.at).contactY) < 0.0001);
-    assert.ok(Math.abs(after.fromSlot! - (womanY-L.feet[0])/L.slotHeight) < 0.0001);
+    assert.ok(Math.abs(civilianLaneFeet(L, after.fromSlot!) - womanY) < 0.0001);
   }
 });
 
