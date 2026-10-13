@@ -116,10 +116,16 @@ export interface StrongWindState {
   cooldownRoundsRemaining: number;
 }
 
+export type SwallowEntryEdge = 'left' | 'right' | 'top' | 'bottom';
+
 export interface SwallowState {
   id: string;
   seed: number;
   bornAt: number;
+  /** Optional for compatibility with saved/reconnected older flocks. */
+  entryEdge?: SwallowEntryEdge;
+  /** Small server-assigned entrance stagger in milliseconds. */
+  entryDelay?: number;
   /** Presence means dead. Ground position persists across weather events. */
   remains?: {
     x: number; y: number; fromY: number;

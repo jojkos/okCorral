@@ -1,7 +1,7 @@
 import type { Bullet, GameState, RainState, StrongWindState, SwallowState } from '../shared/types.js';
 import { slotLayout } from '../shared/arenaGeometry.js';
 import { resolvedBulletFlight } from '../shared/bulletFlight.js';
-import { swallowIntersection, swallowPosition } from '../shared/swallows.js';
+import { swallowIntersection, swallowPosition, SWALLOW_ENTRY_EDGES } from '../shared/swallows.js';
 import { VOLLEY } from '../shared/volley.js';
 
 export const FIRST_RAIN_ROUND = 5;
@@ -24,6 +24,7 @@ export function advanceRain(previous: RainState = initialRainState(), round: num
   if (round < FIRST_RAIN_ROUND - RAIN_WARNING_ROUNDS || random() >= RAIN_CHANCE) return dry;
   const flock: SwallowState[] = Array.from({ length: SWALLOW_COUNT }, (_, i) => ({
     id: `swallow-${round}-${i}`, seed: Math.floor(random() * 1_000_000_000) + i * 137, bornAt: now,
+    entryEdge: SWALLOW_ENTRY_EDGES[i % SWALLOW_ENTRY_EDGES.length], entryDelay: i * 120,
   }));
   return { ...dry, phase: 'warning', warningRoundsRemaining: RAIN_WARNING_ROUNDS, swallows: [...dry.swallows, ...flock] };
 }

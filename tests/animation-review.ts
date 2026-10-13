@@ -47,7 +47,8 @@ async function verify(){
       root.querySelector('#wind-readout')!.textContent=`${entry.wind.direction} · ${entry.wind.phase} · brush ${Math.abs(windFrame.speed).toFixed(0)} px/s · dust ${Math.abs(windFrame.speed*2.4).toFixed(0)} px/s · travel ${windFrame.travel.toFixed(0)} px`;
     }else{
       root.querySelector('#wind-readout')!.textContent='';
-      entry.draw(ctx,manual.checked?Number(progress.value)/100:(now%2400)/2400,!reducedMotion(),5);
+      const duration=entry.durationMs??2400;
+      entry.draw(ctx,manual.checked?Number(progress.value)/100:(now%duration)/duration,!reducedMotion(),5);
     }
     requestAnimationFrame(frame);
   };

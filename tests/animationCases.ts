@@ -10,7 +10,7 @@ import { drawBanners, drawBullets, drawEmotes, drawFloaters, drawHats, drawImpac
 import { weatherTransitionCases } from './weatherTransitions.browser';
 import { characterDesignCases } from './characterDesigns.browser';
 
-export type AnimationCase = { name: string; wind?: StrongWindState; draw: (ctx: CanvasRenderingContext2D, progress: number, motion: boolean, slots: number) => void };
+export type AnimationCase = { name: string; durationMs?: number; wind?: StrongWindState; draw: (ctx: CanvasRenderingContext2D, progress: number, motion: boolean, slots: number) => void };
 export const wind = (phase: StrongWindState['phase'], direction: 'up' | 'down'): StrongWindState => ({phase, direction, activeRoundsRemaining: 2, cooldownRoundsRemaining: 0});
 const civilian = (phase: 'walking' | 'dead'): WalkingWomanState => ({phase, slot: 2, fromSlot: 1, direction: 'down', cooldownRoundsRemaining: 0, bloodTrail: phase === 'dead' ? [0, 1, 2] : [], killedFromTeam: 'sheriffs'});
 export function animationGame(): GameState {
@@ -31,7 +31,7 @@ export const animationCases: AnimationCase[] = [
     },
   }))),
   {name:'Rain and puddles',draw(ctx,p,motion){const gs=animationGame();drawRainGround(ctx,gs,p,motion);drawRain(ctx,gs,p,motion);}},
-  {name:'Swallows in flight',draw(ctx,p,motion){const gs=animationGame();gs.rain.swallows=Array.from({length:6},(_,i)=>({id:String(i),seed:17+i*39,bornAt:10000}));drawSwallows(ctx,gs,10000+p*1000,p,-1,motion,'air');}},
+  {name:'Swallows in flight',draw(ctx,p,motion){const gs=animationGame();gs.rain.swallows=Array.from({length:6},(_,i)=>({id:String(i),seed:17+i*39,bornAt:5000}));drawSwallows(ctx,gs,10000+p*1000,p,-1,motion,'air');}},
   {name:'Swallow falling',draw(ctx,p,motion){const gs=animationGame();gs.rain.swallows=[{id:'bird',seed:7,bornAt:10000,remains:{x:800,y:570,fromY:570,hitX:800,hitY:460,hitAngle:0.4,hitAt:900,hitTick:12}}];for(const layer of ['air','ground'] as const)drawSwallows(ctx,gs,11000,p,900+p*500,motion,layer);}},
   {name:'Swallow remains in wind',draw(ctx,p,motion){const gs=animationGame();gs.rain.swallows=[{id:'bird',seed:7,bornAt:10000,remains:{x:800,y:700,fromY:550,hitX:800,hitY:460,hitAngle:0.4,hitAt:900,hitTick:11}}];drawSwallows(ctx,gs,11000,p,-1,motion,'ground');}},
   ...(['walking','dead'] as const).map(phase=>({name:`Civilian ${phase}`,draw:(ctx:CanvasRenderingContext2D,p:number,motion:boolean,n:number)=>drawWalkingWoman(ctx,slotLayout(n),civilian(phase),p,motion,p)})),

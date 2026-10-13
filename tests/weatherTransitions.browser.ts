@@ -4,6 +4,12 @@ import { drawStrongWindWeather } from '../src/host/arena/scene';
 import { drawRain, drawRainGround, drawSwallows } from '../src/host/arena/rain';
 import { createWeatherPresentation, stepWeatherPresentation, type WeatherPresentation } from '../src/host/arena/weatherPresentation';
 import type { AnimationCase } from './animationCases';
+import { SWALLOW_ENTRY_EDGES } from '../shared/swallows';
+
+const arrivalFlock = () => Array.from({ length: 6 }, (_, i) => ({
+  id: `arrival-${i}`, seed: 17 + i * 39, bornAt: 10000,
+  entryEdge: SWALLOW_ENTRY_EDGES[i % 4], entryDelay: i * 120,
+}));
 
 function game(slots: number): GameState {
   return {
@@ -30,6 +36,32 @@ function paint(ctx: CanvasRenderingContext2D, gs: GameState, state: WeatherPrese
 }
 
 export const weatherTransitionCases: AnimationCase[] = [
+  {
+    name: 'Swallows arrive from all four edges', durationMs: 4000,
+    draw(ctx, progress, motion, slots) {
+      const gs = game(slots);
+      gs.rain.phase = 'warning'; gs.rain.swallows = arrivalFlock();
+      ctx.save();
+      drawSwallows(ctx, gs, 10000 + progress * 4000, progress, -1, motion, 'air');
+      ctx.restore();
+    },
+  },
+  {
+    name: 'Swallows arrive circle and leave continuously', durationMs: 13000,
+    draw(ctx, progress, motion, slots) {
+      const gs = game(slots), state = createWeatherPresentation(), time = progress * 13000;
+      gs.rain.phase = 'warning'; gs.rain.swallows = arrivalFlock();
+      stepWeatherPresentation(state, gs, 10000 + Math.min(time, 9000), Math.min(time, 9000) / 1000, motion);
+      if (time >= 9000) {
+        gs.rain.swallows = []; gs.rain.phase = 'active'; gs.tickStartTime = 19000;
+        stepWeatherPresentation(state, gs, 19000, 0, motion);
+        stepWeatherPresentation(state, gs, 10000 + time, (time - 9000) / 1000, motion);
+      }
+      ctx.save();
+      drawSwallows(ctx, gs, 10000 + time, progress, -1, motion, 'air', state);
+      ctx.restore();
+    },
+  },
   ...(['up', 'down'] as const).map(direction => ({
     name: `Wind ${direction} blows completely away`,
     draw(ctx: CanvasRenderingContext2D, progress: number, motion: boolean, slots: number) {
@@ -87,7 +119,7 @@ export const weatherTransitionCases: AnimationCase[] = [
     draw(ctx: CanvasRenderingContext2D, progress: number, motion: boolean, slots: number) {
       const gs = game(slots), state = createWeatherPresentation(), time = progress * (duration === 1000 ? 1000 : 3500);
       gs.config.tickDuration = duration;
-      gs.rain.swallows = Array.from({ length: 6 }, (_, i) => ({ id: `bird-${i}`, seed: 17 + i * 39, bornAt: 10000 }));
+      gs.rain.swallows = Array.from({ length: 6 }, (_, i) => ({ id: `bird-${i}`, seed: 17 + i * 39, bornAt: 5000 }));
       stepWeatherPresentation(state, gs, 10000, 1, motion);
       gs.rain.swallows = [];
       gs.tickStartTime = 11000;
@@ -102,7 +134,7 @@ export const weatherTransitionCases: AnimationCase[] = [
       const gs = game(slots), state = createWeatherPresentation();
       gs.strongWind = { phase: 'active', direction: 'up', activeRoundsRemaining: 1, cooldownRoundsRemaining: 0 };
       gs.rain.phase = 'active';
-      gs.rain.swallows = Array.from({ length: 4 }, (_, i) => ({ id: `bird-${i}`, seed: 17 + i * 39, bornAt: 10000 }));
+      gs.rain.swallows = Array.from({ length: 4 }, (_, i) => ({ id: `bird-${i}`, seed: 17 + i * 39, bornAt: 5000 }));
       stepWeatherPresentation(state, gs, 10000, 4, motion);
       gs.strongWind = { ...gs.strongWind, phase: 'calm', direction: null }; gs.rain.phase = 'dry'; gs.rain.swallows = [];
       gs.tickStartTime = 11000;
