@@ -2,16 +2,20 @@
 .audio-preferences { position: fixed; right: 16px; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 54px); z-index: 101; width: min(286px, calc(100vw - 32px)); padding: 14px; border: 1px solid #87988c; border-radius: 12px; background: #172a32; color: #f5ead6; box-shadow: 0 12px 35px #0008; font: 14px/1.4 'Outfit', sans-serif; }
 .audio-preferences header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .audio-preferences header button { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #8e9c9066; border-radius: 50%; color: #f5ead6; background: transparent; }
-.audio-preferences label { display: flex; align-items: center; gap: 9px; min-height: 32px; cursor: pointer; }
-.audio-preferences input[type=checkbox] { width: 17px; height: 17px; accent-color: #edc38a; }
-.audio-preferences fieldset { border: 0; border-top: 1px solid #82918555; margin: 12px 0 0; padding: 7px 0 0; min-width: 0; }
-.audio-preferences legend { padding-right: 8px; color: #edc38a; font-weight: 600; }
-.audio-preferences fieldset:disabled { opacity: .5; }
+.audio-controls label { display: flex; align-items: center; gap: 9px; min-height: 32px; cursor: pointer; }
+.audio-controls input[type=checkbox] { width: 17px; height: 17px; accent-color: #edc38a; }
+.audio-controls fieldset { border: 0; border-top: 1px solid #82918555; margin: 12px 0 0; padding: 7px 0 0; min-width: 0; }
+.audio-controls legend { padding-right: 8px; color: #edc38a; font-weight: 600; }
+.audio-controls fieldset:disabled { opacity: .5; }
 .audio-level { display: flex; align-items: center; gap: 12px; min-height: 32px; }
 .audio-level input { flex: 1; min-width: 0; accent-color: #edc38a; cursor: pointer; height: 26px; }
 .audio-level input:disabled { opacity: .5; cursor: default; }
 .audio-level output { min-width: 36px; text-align: right; color: #d8d5c5; font-variant-numeric: tabular-nums; }
-.audio-preferences input:focus-visible, .audio-preferences button:focus-visible { outline: 2px solid #a6ddd2; outline-offset: 3px; }
+.audio-controls input:focus-visible, .audio-controls button:focus-visible { outline: 2px solid #a6ddd2; outline-offset: 3px; }
 .audio-track { display: grid; gap: 3px; margin-top: 7px; color: #d8d5c5; font-size: 11px; }
 .audio-track strong { color: #edc38a; font-size: 12px; font-weight: 500; }
 .audio-track button { padding: 2px 5px; border: 1px solid #87988c; border-radius: 4px; background: transparent; color: #edc38a; cursor: pointer; }
+
+.settings-audio { margin-top: 24px; padding-top: 16px; border-top: 1px solid #e0b04a66; font: 14px/1.4 'Outfit', sans-serif; color: #f4e9d6; }
+.settings-audio h4 { margin: 0; color: #e0b04a; font-size: 17px; }
+.settings-audio p { margin: 4px 0 10px; color: #d9cbb0; font-size: 12px; }

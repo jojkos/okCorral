@@ -52,7 +52,7 @@ export interface AudioPreferences {
   effectsVolume: number;
 }
 const AUDIO_KEY = 'okCorral-audio';
-const defaults: AudioPreferences = { musicEnabled: true, effectsEnabled: true, musicVolume: 0.5, effectsVolume: 0.7 };
+const defaults: AudioPreferences = { musicEnabled: true, effectsEnabled: true, musicVolume: 0.3, effectsVolume: 0.7 };
 function readAudioPreferences(): AudioPreferences {
   try {
     const value = JSON.parse(globalThis.localStorage?.getItem(AUDIO_KEY) || '{}');
@@ -65,6 +65,12 @@ function readAudioPreferences(): AudioPreferences {
   } catch { return { ...defaults }; }
 }
 let audioPreferences = readAudioPreferences();
+const audioListeners = new Set<() => void>();
+export function subscribeAudioPreferences(listener: () => void): () => void {
+  audioListeners.add(listener);
+  return () => { audioListeners.delete(listener); };
+}
+export function getAudioPreferencesSnapshot(): Readonly<AudioPreferences> { return audioPreferences; }
 export function getAudioPreferences(): AudioPreferences { return { ...audioPreferences }; }
 export function setAudioPreferences(next: Partial<AudioPreferences>): void {
   audioPreferences = {
@@ -78,6 +84,7 @@ export function setAudioPreferences(next: Partial<AudioPreferences>): void {
     graph.sfx.gain.setTargetAtTime(audioPreferences.effectsEnabled ? audioPreferences.effectsVolume * 0.8 : 0, ctx.currentTime, 0.03);
     graph.music.gain.setTargetAtTime(audioPreferences.musicEnabled ? audioPreferences.musicVolume * 0.45 : 0, ctx.currentTime, 0.05);
   }
+  audioListeners.forEach(listener => listener());
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
@@ -275,6 +282,7 @@ export function setMuted(next: boolean): void {
   muted = next;
   writeMuted(next);
   applyMasterGain();
+  audioListeners.forEach(listener => listener());
 }
 export function isMuted(): boolean { return muted; }
 export function setVolume(v: number): void {

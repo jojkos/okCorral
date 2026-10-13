@@ -11,6 +11,7 @@ import {
   westernStyles as S,
 } from '../components/WesternUI';
 import HowToPlay from './components/HowToPlay';
+import AudioControls from '../components/AudioControls';
 import EventSwitches from './components/EventSwitches';
 import { eventSettings } from '../../shared/eventSettings';
 import { BotBadge, PlayerAvatar, SessionScore, hasSessionGames } from './components/HostBits';
@@ -301,11 +302,16 @@ function SettingsModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Game settings"
+        aria-modal="true"
         style={{
           ...S.wood,
-          padding: 32,
+          padding: 24,
           width: '100%',
           maxWidth: 440,
+          maxHeight: 'calc(100dvh - 32px)',
+          overflowY: 'auto',
           border: '2px solid #e0b04a',
         }}
       >
@@ -313,6 +319,7 @@ function SettingsModal({
           <h3 style={{ ...S.title, fontSize: 24, margin: 0 }}>GAME SETTINGS</h3>
           <button
             onClick={onClose}
+            aria-label="Close game settings"
             style={{
               background: 'transparent',
               border: 'none',
@@ -386,6 +393,12 @@ function SettingsModal({
             />
           </label>
         </div>
+
+        <section className="settings-audio" aria-label="Audio settings">
+          <h4>Audio</h4>
+          <p>On this device · saves automatically</p>
+          <AudioControls showTrackDetails={false} />
+        </section>
 
         <div style={{ marginTop: 24 }}>
           <WesternBtn primary big onClick={onClose}>SAVE & CLOSE</WesternBtn>
