@@ -11,6 +11,7 @@ import { BADGE_MIN_Y, CANVAS_H, CANVAS_W, Layout, TEAM_COL, barrelHeight, barrel
 import { drawBackground, drawBarrel, drawStrongWindWeather, drawVignette, drawWalkingWoman } from './arena/scene';
 import { drawGatlingMan, gatlingTravel, gatlingWomanFrame } from './arena/gatling';
 import { drawRain, drawRainGround, drawSwallows } from './arena/rain';
+import { createWindMotion, stepWindMotion, type WindMotion } from './arena/windMotion';
 import { ActorAnim, ActorFrame, actorFrame, drawActionBadge, drawActor, drawIntentMarker, drawPlate, headY } from './arena/actors';
 import { Banner, BulletAnim, EmoteFx, Floater, FlyingHat, Impact, Muzzle, ParticleSystem, drawBanners, drawBullets, drawEmotes, drawFloaters, drawHats, drawImpacts, drawMuzzles, stepHats } from './arena/fx';
 import { drawCountdown, drawHUD, drawLegend } from './arena/hud';
@@ -35,6 +36,7 @@ interface AnimState {
   flash: number;
   /** Animation clock (seconds), slowed by hit-stop / slow-mo. */
   t: number;
+  wind: WindMotion;
   slowUntil: number;
   slowScale: number;
   /** Short camera punch on each gatling round; decays between shots. */
@@ -53,7 +55,7 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
   const gsRef = useRef<GameState>(gameState);
   const stRef = useRef<AnimState>({
     particles: new ParticleSystem(), bullets: [], muzzles: [], impacts: [], floaters: [], banners: [], hats: [], emotes: [],
-    shake: { x: 0, y: 0, mag: 0, until: 0 }, flash: 0, t: 0, slowUntil: 0, slowScale: 1, gatlingKick: 0,
+    shake: { x: 0, y: 0, mag: 0, until: 0 }, flash: 0, t: 0, wind: createWindMotion(), slowUntil: 0, slowScale: 1, gatlingKick: 0,
     cam: { zoom: 1, x: CANVAS_W / 2, y: CANVAS_H / 2, tz: 1, tx: CANVAS_W / 2, ty: CANVAS_H / 2 },
     anims: {}, frames: {}, timeLeft: 0, lastCountdown: 0, finalAt: null,
   });
@@ -313,7 +315,8 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
     let raf = 0;
     let last = performance.now();
     const frame = (now: number) => {
-      const real = Math.min(0.05, (now - last) / 1000);
+      const elapsed = Math.max(0, (now - last) / 1000);
+      const real = Math.min(0.05, elapsed);
       last = now;
       const st = stRef.current;
       const gs = gsRef.current;
@@ -332,6 +335,9 @@ export default function CanvasArena({ gameState }: CanvasArenaProps) {
       if (document.hidden) { st.bullets = []; st.muzzles = []; st.impacts = []; st.floaters = []; }
 
       const motion = !reducedMotion();
+      // Weather keeps its own real-time travel, even during impact hit-stop.
+      // A background-tab gap is a pause, not a whole storm fast-forward.
+      stepWindMotion(st.wind, gs.strongWind, elapsed > 0.5 || document.hidden ? 0 : elapsed, motion);
       if (motion && st.t < st.shake.until) {
         const decay = Math.max(0, st.shake.until - st.t) / 0.3;
         st.shake.x = (Math.random() - 0.5) * st.shake.mag * decay;
@@ -391,7 +397,7 @@ function draw(ctx: CanvasRenderingContext2D, gs: GameState, st: AnimState, bg: H
   drawBackground(ctx, bg, st.t);
   drawRainGround(ctx, gs, st.t, motion);
   drawSwallows(ctx, gs, serverNow(), roundProgress, elapsed, motion, 'ground');
-  drawStrongWindWeather(ctx, L, gs.strongWind, st.t, motion);
+  drawStrongWindWeather(ctx, L, gs.strongWind, st.wind.travel);
   const gatlingTarget = gs.gatlingMan.phase !== 'active' || !gs.gatlingMan.targets.length ? null
     : gs.gatlingMan.targets[Math.max(0, Math.min(gs.gatlingMan.targets.length - 1,
       elapsed >= VOLLEY.move ? Math.floor((elapsed - VOLLEY.move) / 42) : Math.floor(st.t * 1.5) % gs.gatlingMan.targets.length))];

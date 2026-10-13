@@ -1,10 +1,13 @@
 import { animationCases, drawBackground } from './animationCases';
 import { reducedMotion, setMotionPreference, subscribeMotionPreference } from '../src/lib/motionPreferences';
+import { slotLayout } from '../shared/arenaGeometry';
+import { drawStrongWindWeather } from '../src/host/arena/scene';
+import { createWindMotion, stepWindMotion } from '../src/host/arena/windMotion';
 import '../src/index.css';
 
 document.body.style.cssText='padding:24px;background:#25231d;color:#ead3b0;font:16px sans-serif';
 const root=document.querySelector<HTMLDivElement>('#root')!;
-root.innerHTML='<h1 style="font-size:28px">Production animation checks</h1><p id="result" role="status">Checking…</p><button id="motion">Toggle reduced motion</button><label>Case <select id="case"></select></label><canvas aria-label="Animation review" width="1600" height="900" style="width:100%;max-width:1280px"></canvas><ol id="checks"></ol>';
+root.innerHTML='<h1 style="font-size:28px">Production animation checks</h1><p id="result" role="status">Checking…</p><button id="motion">Toggle reduced motion</button><label>Case <select id="case"></select></label><p id="wind-readout"></p><canvas aria-label="Animation review" width="1600" height="900" style="width:100%;max-width:1280px"></canvas><ol id="checks"></ol>';
 const canvas=root.querySelector('canvas')!,ctx=canvas.getContext('2d',{willReadFrequently:true})!;
 const select=root.querySelector<HTMLSelectElement>('#case')!;
 for(const entry of animationCases)select.add(new Option(entry.name,entry.name));
@@ -26,7 +29,22 @@ async function verify(){
     }catch(error){errors.push(`${entry.name}: ${error}`);}
   }
   root.querySelector('#result')!.textContent=errors.length?`FAIL: ${errors.join(' | ')}`:`PASS: ${passed}/${animationCases.length} animated cases; all assets loaded; reduced-motion and 2/8-lane checks passed`;
-  const frame=(now:number)=>{ctx.clearRect(0,0,1600,900);drawBackground(ctx,bg,0);animationCases.find(c=>c.name===select.value)!.draw(ctx,(now%2400)/2400,!reducedMotion(),5);requestAnimationFrame(frame);};
+  const windFrame=createWindMotion();let last=performance.now();
+  const frame=(now:number)=>{
+    ctx.clearRect(0,0,1600,900);drawBackground(ctx,bg,0);
+    const entry=animationCases.find(c=>c.name===select.value)!,seconds=(now-last)/1000;last=now;
+    if(entry.wind){
+      // Real elapsed time, not the looping snapshot progress: this lets QA
+      // judge speed and switch warning -> active without resetting positions.
+      stepWindMotion(windFrame,entry.wind,seconds>.5||document.hidden?0:seconds,!reducedMotion());
+      drawStrongWindWeather(ctx,slotLayout(5),entry.wind,windFrame.travel);
+      root.querySelector('#wind-readout')!.textContent=`${entry.wind.direction} · ${entry.wind.phase} · brush ${Math.abs(windFrame.speed).toFixed(0)} px/s · dust ${Math.abs(windFrame.speed*2.4).toFixed(0)} px/s · travel ${windFrame.travel.toFixed(0)} px`;
+    }else{
+      root.querySelector('#wind-readout')!.textContent='';
+      entry.draw(ctx,(now%2400)/2400,!reducedMotion(),5);
+    }
+    requestAnimationFrame(frame);
+  };
   requestAnimationFrame(frame);
 }
 root.querySelector('#motion')!.addEventListener('click',()=>setMotionPreference(reducedMotion()?'full':'reduced'));

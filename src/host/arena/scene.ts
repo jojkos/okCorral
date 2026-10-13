@@ -38,12 +38,13 @@ export function drawBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElem
 }
 
 /** Dust and tumbleweeds live in the arena layer, behind the gunfighters. */
-export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, wind: StrongWindState, t: number, motion: boolean) {
+export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, wind: StrongWindState, travel: number) {
   if (wind.phase === 'calm' || !wind.direction) return;
   const active = wind.phase === 'active';
   const dir = wind.direction === 'up' ? -1 : 1;
-  const speed = motion ? (active ? 150 : 24) : 0;
-  const span = L.slotHeight * L.n + 180;
+  // Recycle only when the whole weed / longest dust tail is off the street.
+  const pad = 200;
+  const span = L.slotHeight * L.n + pad * 2;
   const wrap = (v: number) => ((v % span) + span) % span;
 
   ctx.save();
@@ -57,17 +58,21 @@ export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, 
     for (let i = 0; i < 13; i++) {
       const x = 500 + rand(i * 41 + 8) * 600;
       const base = rand(i * 53 + 17) * span;
-      const y = L.top - 90 + wrap(base + t * speed * dir);
+      // Loose dust travels faster than the heavier rolling brush.
+      const y = L.top - pad + wrap(base + travel * 2.4);
       const len = 50 + rand(i * 19) * 110;
       ctx.globalAlpha = 0.3 + rand(i * 7) * 0.22;
       const width = 2 + rand(i * 29) * 3;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x + 12, y + dir * len * 0.45, x - 8, y + dir * len);
+      // The bright head leads, with the fading tail behind the wind direction.
+      ctx.quadraticCurveTo(x + 12, y - dir * len * 0.45, x - 8, y - dir * len);
       // Two-tone dust stays readable on the bright street, including rain.
       ctx.strokeStyle = '#80603c'; ctx.lineWidth = width + 2;
       ctx.stroke();
-      ctx.strokeStyle = '#f4d69d'; ctx.lineWidth = width;
+      const dust = ctx.createLinearGradient(x, y, x, y - dir * len);
+      dust.addColorStop(0, '#f4d69d'); dust.addColorStop(1, 'rgba(244,214,157,0)');
+      ctx.strokeStyle = dust; ctx.lineWidth = width;
       ctx.stroke();
     }
   }
@@ -76,9 +81,9 @@ export function drawStrongWindWeather(ctx: CanvasRenderingContext2D, L: Layout, 
   for (let i = 0; i < (active ? 5 : 3); i++) {
     const x = 560 + rand(i * 67 + 4) * 480;
     const base = rand(i * 37 + 3) * span;
-    const y = L.top - 90 + wrap(base + t * speed * dir);
-    const r = (active ? 24 : 19) + rand(i * 23) * 10;
-    drawTumbleweed(ctx, x, y, r, motion ? t * dir * (active ? 4.5 : 1.1) + i : i, active ? 1 : 0.8, i + 1);
+    const y = L.top - pad + wrap(base + travel);
+    const r = 24 + rand(i * 23) * 10;
+    drawTumbleweed(ctx, x, y, r, travel / r + i, active ? 1 : 0.8, i + 1);
   }
   ctx.restore();
 }

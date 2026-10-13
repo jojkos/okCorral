@@ -2,12 +2,13 @@ import type { GameState, Player, StrongWindState, WalkingWomanState } from '../s
 import { slotLayout } from '../shared/arenaGeometry';
 import { playerShotCurve } from '../shared/ballistics';
 import { drawBackground, drawBarrel, drawStrongWindWeather, drawWalkingWoman } from '../src/host/arena/scene';
+import { createWindMotion, stepWindMotion } from '../src/host/arena/windMotion';
 import { actorFrame, drawActor } from '../src/host/arena/actors';
 import { drawGatlingMan } from '../src/host/arena/gatling';
 import { drawRain, drawRainGround, drawSwallows } from '../src/host/arena/rain';
 import { drawBanners, drawBullets, drawEmotes, drawFloaters, drawHats, drawImpacts, drawMuzzles, ParticleSystem, stepHats } from '../src/host/arena/fx';
 
-export type AnimationCase = { name: string; draw: (ctx: CanvasRenderingContext2D, progress: number, motion: boolean, slots: number) => void };
+export type AnimationCase = { name: string; wind?: StrongWindState; draw: (ctx: CanvasRenderingContext2D, progress: number, motion: boolean, slots: number) => void };
 export const wind = (phase: StrongWindState['phase'], direction: 'up' | 'down'): StrongWindState => ({phase, direction, activeRoundsRemaining: 2, cooldownRoundsRemaining: 0});
 const civilian = (phase: 'walking' | 'dead'): WalkingWomanState => ({phase, slot: 2, fromSlot: 1, direction: 'down', cooldownRoundsRemaining: 0, bloodTrail: phase === 'dead' ? [0, 1, 2] : [], killedFromTeam: 'sheriffs'});
 export function animationGame(): GameState {
@@ -18,7 +19,12 @@ export function animationGame(): GameState {
 }
 export const animationCases: AnimationCase[] = [
   ...(['warning','active'] as const).flatMap(phase => (['up','down'] as const).map(direction => ({
-    name:`Wind ${phase} ${direction}`, draw:(ctx:CanvasRenderingContext2D,p:number,motion:boolean,n:number)=>drawStrongWindWeather(ctx,slotLayout(n),wind(phase,direction),2+p,motion),
+    wind: wind(phase,direction),
+    name:`Wind ${phase} ${direction}`, draw:(ctx:CanvasRenderingContext2D,p:number,motion:boolean,n:number)=>{
+      const frame=createWindMotion(),weather=wind(phase,direction);
+      stepWindMotion(frame,weather,2+p,motion);
+      drawStrongWindWeather(ctx,slotLayout(n),weather,frame.travel);
+    },
   }))),
   {name:'Rain and puddles',draw(ctx,p,motion){const gs=animationGame();drawRainGround(ctx,gs,p,motion);drawRain(ctx,gs,p,motion);}},
   {name:'Swallows in flight',draw(ctx,p,motion){const gs=animationGame();gs.rain.swallows=Array.from({length:6},(_,i)=>({id:String(i),seed:17+i*39,bornAt:10000}));drawSwallows(ctx,gs,10000+p*1000,p,-1,motion,'air');}},
